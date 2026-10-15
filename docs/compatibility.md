@@ -1,0 +1,58 @@
+# Development baseline and compatibility matrix
+
+## Inspected baseline
+
+Read-only inventory performed on 2026-10-15. This is a development baseline, not a tested minimum-version claim.
+
+| Component | Installed version |
+| --- | --- |
+| Omarchy | 4.0.4-1 |
+| Hyprland | 0.56.2-2 (runtime reports 0.56.2) |
+| Quickshell | 0.3.1-1 |
+| Qt base | 6.11.2-3 |
+| wl-clipboard | 2.3.0-1 |
+| wtype | 0.4-2 |
+| libxkbcommon | 1.13.2-1 |
+| Python | 3.14.7-1 |
+| Lua | 5.5.1-1 |
+
+`qs`, `hyprctl`, `wl-copy`, `wl-paste`, `wtype`, and `xkbcli` are available on PATH. QML lint is installed at `/usr/lib/qt6/bin/qmllint`, not on PATH. Node.js and Syncthing were not found in the package/PATH checks; neither is currently a selected runtime dependency. A sync folder may be managed by any compatible external tool.
+
+The installed shell documentation confirms that plugins run inside the shared Quickshell process. The built-in clipboard manifest is a kept-loaded overlay. Built-in clone routing provides a potential replacement/restoration path; the exact manifest and lifecycle behavior still require validation for this plugin. No second shell instance or system integration has been started.
+
+## Required application matrix
+
+The owner confirmed all entries below. Every test is **pending**; installed software is not evidence of compatibility.
+
+| Target | Inventory | Required checks |
+| --- | --- | --- |
+| Ghostty | 1.3.1-2 | Copy/paste, shell prompt and Neovim, immediate expansion, multiline safety/fallback, cursor positioning |
+| Foot | 1.28.0-1 | Copy/paste, shell prompt and Neovim, immediate expansion, multiline safety/fallback, cursor positioning |
+| Neovim | 0.12.5-1 | Insert/normal-mode safety in both terminals, Unicode, multiline text, cursor positioning |
+| Chromium | 152.0.7977.82-1 | Plain text fields, textareas, contenteditable, web-chat multiline safety, cursor positioning |
+| Discord | Desktop launcher present; version/build not yet established | Message composer, multiline insertion without send, cursor positioning |
+| Telegram | 7.2.5-1 | Message composer, multiline insertion without send, cursor positioning |
+| Obsidian | Desktop launcher present; version/build not yet established | Markdown editor input, multiline insertion, cursor positioning |
+
+Application packaging must be checked before writing exclusions or app-specific adapters: a desktop launcher name alone does not prove a native app versus a browser-hosted app. Do not assume terminal identity reveals whether a shell prompt or editor is active.
+
+1Password is present in the desktop inventory and should be covered by default password-manager exclusion tests, not treated as an expansion target.
+
+## Required keyboard matrix
+
+- Active at inspection: English (Dvorak).
+- Configured XKB layouts: `us,us`; variants: `dvorak,` (Dvorak and unmodified US QWERTY).
+- Test expansion, search input, copy shortcuts, modifiers, shifted punctuation, and backspace correction under both layouts.
+- Test layout switching with a partially typed keyword: stale matching state must not survive a context change.
+- Confirm that shortcut behavior follows Omarchy conventions under Dvorak rather than assuming physical QWERTY key positions.
+
+## Safety and lifecycle test gates
+
+- Session lock/unlock, uncertain lock state, focus changes during insertion, excluded apps, picker/editor focus, and global expansion pause.
+- No recursive expansion from injected text; no logging or persistence of matching buffers.
+- Multiline content never sends chat messages or executes shell commands. If this cannot be guaranteed for a context, refuse automatic insertion and offer copy-only.
+- `{cursor}` placement tested with Unicode, multiline content, and variable substitutions. Do not claim compatibility from ASCII-only tests.
+- External sync updates, conflict files, malformed data, missing folders, and permission failures preserve recoverable data.
+- Disable/re-enable, shell restart, plugin update/removal, and clipboard restoration do not leave hooks or capture processes behind.
+
+Interactive validation must use scratch documents/input contexts with explicit approval before controlling apps, modifying desktop integration, or injecting text. The inventory itself did none of these.
