@@ -1,0 +1,11 @@
+# Local secrets and personal clipboard/snippet data
+.env
+.env.*
+!.env.example
+/local-data/
+
+# Editor and OS artifacts
+*.swp
+*.swo
+*~
+.DS_Store
