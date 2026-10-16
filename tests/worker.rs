@@ -114,6 +114,42 @@ fn clipboard_callback_capture_search_literal_reuse_and_restart() {
 }
 
 #[test]
+fn clipboard_delete_is_history_only_and_persists() {
+    let directory = data();
+    let mut worker = Worker::launch(directory.path());
+    let first = worker.request(json!({"op": "clipboard-capture", "text": "Delete 🌍\r\n{date}"}))["record"].clone();
+    let second = worker.request(json!({"op": "clipboard-capture", "text": "Keep this"}))["record"].clone();
+    worker.request(json!({"op": "used", "record": "snippet-0000"}));
+    let library_path = directory.path().join("library.json");
+    let usage_path = directory.path().join("usage.local.json");
+    let history_path = directory.path().join("history.local.json");
+    let library = fs::read(&library_path).unwrap();
+    let usage = fs::read(&usage_path).unwrap();
+    let history = fs::read(&history_path).unwrap();
+    for record in [json!("snippet-0000"), json!("missing"), json!(""), json!(null), json!(5)] {
+        assert!(worker.request(json!({"op": "clipboard-delete", "record": record})).get("error").is_some());
+        assert_eq!(fs::read(&history_path).unwrap(), history);
+    }
+    let deleted = worker.request(json!({"op": "clipboard-delete", "seq": 42, "record": first}));
+    assert_eq!(deleted, json!({"op": "clipboard-delete", "seq": 42, "record": first, "deleted": true}));
+    for operation in ["preview", "render", "clipboard-delete"] {
+        assert!(worker.request(json!({"op": operation, "record": first})).get("error").is_some());
+    }
+    let rows = worker.request(json!({"op": "search", "kind": "clipboard"}));
+    assert_eq!(rows["rows"].as_array().unwrap().len(), 1);
+    assert_eq!(rows["rows"][0]["id"], second);
+    assert_eq!(fs::read(&library_path).unwrap(), library);
+    assert_eq!(fs::read(&usage_path).unwrap(), usage);
+    worker.shutdown();
+    let mut worker = Worker::launch(directory.path());
+    assert!(worker.request(json!({"op": "preview", "record": first})).get("error").is_some());
+    assert_eq!(worker.request(json!({"op": "preview", "record": second}))["body"], "Keep this");
+    worker.request(json!({"op": "clipboard-delete", "record": second}));
+    assert_eq!(worker.request(json!({"op": "search", "kind": "clipboard"}))["rows"], json!([]));
+    worker.shutdown();
+}
+
+#[test]
 fn clipboard_callback_ignores_sensitive_empty_binary_and_oversized_selections() {
     for (state, bytes) in [
         ("sensitive", b"private".to_vec()), ("nil", vec![]), ("clear", vec![]),

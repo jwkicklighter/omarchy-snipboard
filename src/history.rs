@@ -86,6 +86,19 @@ impl History {
         Ok(id(text))
     }
 
+    /// Delete only history text, persisting before changing the live history.
+    pub fn delete(&mut self, path: &Path, record: &str) -> Result<()> {
+        let mut fresh = self.clone();
+        let previous = fresh.entries.len();
+        fresh.entries.retain(|entry| id(&entry.body) != record);
+        if fresh.entries.len() == previous {
+            return Err(Error::Invalid("clipboard entry no longer exists"));
+        }
+        atomic_write(path, &fresh)?;
+        *self = fresh;
+        Ok(())
+    }
+
     pub fn records(&self) -> Vec<Record> {
         self.entries.iter().map(|entry| Record {
             id: id(&entry.body),
@@ -126,6 +139,35 @@ mod tests {
         history.entries = (0..100).map(|i| Entry { body: format!("{i}{}", "\u{1}".repeat(MAX_BODY - 3)), created: i as f64 }).collect();
         history.prune(2000.0);
         assert!(serde_json::to_vec_pretty(&history).unwrap().len() as u64 <= MAX_FILE);
+    }
+
+    #[test]
+    fn deletion_is_atomic_and_survives_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.local.json");
+        let mut history = History::default();
+        let first = history.capture(&path, "🌍\r\n{date}\n ", 1.0).unwrap();
+        let second = history.capture(&path, "keep", 2.0).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        let records = history.records();
+        for invalid in ["", "missing", "snippet-0000"] {
+            assert!(history.delete(&path, invalid).is_err());
+        }
+        FAIL_REPLACE.set(true);
+        let failed = history.delete(&path, &first);
+        FAIL_REPLACE.set(false);
+        assert!(failed.is_err());
+        assert_eq!(history.records(), records);
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        history.delete(&path, &first).unwrap();
+        assert_eq!(history.records().len(), 1);
+        assert_eq!(history.records()[0].id, second);
+        assert_eq!(History::read(&path, 3.0).unwrap().records(), history.records());
+        assert!(history.delete(&path, &first).is_err());
+        history.delete(&path, &second).unwrap();
+        assert!(History::read(&path, 3.0).unwrap().records().is_empty());
+        // A later clipboard event can record the same text again.
+        assert_eq!(history.capture(&path, "keep", 4.0).unwrap(), second);
     }
 
     #[test]

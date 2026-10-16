@@ -30,6 +30,7 @@ Item {
     property int pendingEditor: 0
     property int pendingMutation: 0
     property int pendingReload: 0
+    property int pendingHistoryDelete: 0
     property bool scratchVisible: false
     property bool expansionEnabled: false
     property bool injecting: false
@@ -121,6 +122,11 @@ Item {
         if (activeRow) send("copy", {record: activeRow.id, clipboard: clipboardInput.text})
     }
 
+    function deleteHistory() {
+        if (!ready || !opened || editorVisible || pendingHistoryDelete || pendingPaste || !activeRow || activeRow.kind !== "clipboard") return
+        pendingHistoryDelete = send("clipboard-delete", {record: activeRow.id})
+    }
+
     function editSnippet(record, draft) {
         if (!ready || editorVisible || pendingEditor || pendingMutation || pendingReload) return
         pendingEditor = send(draft ? "snippet-draft" : "snippet-get", {record: record})
@@ -190,6 +196,7 @@ Item {
             }
             if (message.seq === pendingEditor) pendingEditor = 0
             if (message.seq === pendingReload) pendingReload = 0
+            if (message.seq === pendingHistoryDelete) pendingHistoryDelete = 0
             if (message.op === "search") {
                 runningSearch = 0
                 if (message.seq !== wantedSearch) startSearch()
@@ -225,6 +232,20 @@ Item {
             previewSequence = 0
             requestSearch()
             status = "Library reloaded from disk."
+            return
+        }
+        if (message.op === "clipboard-delete") {
+            if (message.seq !== pendingHistoryDelete) return
+            pendingHistoryDelete = 0
+            previewTimer.stop()
+            previewRecord = ""
+            preview = ""
+            previewSequence = 0
+            pendingRender = null
+            resetScratch()
+            requestSearch()
+            if (opened && !editorVisible) search.forceActiveFocus()
+            status = "Deleted from history. System clipboard unchanged."
             return
         }
         if (message.op === "clipboard-capture") {
@@ -301,7 +322,8 @@ Item {
                                openToModelAssignmentMs: openLatency, syntheticInputToFrameSwappedMs: frameLatency,
                                openToFrameSwappedMs: openFrameLatency, physicalPresentationMeasured: false,
                                 rows: rows.length, ready: ready, searchFocused: search.activeFocus,
-                                clipboardCaptureVersion: 1, clipboardWatcherRunning: clipboardWatcher.running,
+                                 clipboardCaptureVersion: 1, clipboardWatcherRunning: clipboardWatcher.running,
+                                 historyDeleteVersion: 1, historyDeletePending: pendingHistoryDelete !== 0,
                                benchmarkRunning: benchmarkRunning, testPhase: testPhase, tests: testResults,
                                layoutResets: layoutResets, layoutProbeResult: layoutProbeResult})
     }
@@ -492,6 +514,7 @@ Item {
             root.pendingEditor = 0
             root.pendingMutation = 0
             root.pendingReload = 0
+            root.pendingHistoryDelete = 0
             snippetEditor.busy = false
             snippetEditor.readOnly = true
             root.status = "Helper stopped. Invalid storage is preserved; rebuild/reload after resolving errors."
@@ -656,6 +679,8 @@ Item {
                                 if (root.activeRow && root.activeRow.kind === "snippet") root.editSnippet(root.activeRow.id)
                             } else if (event.key === Qt.Key_D && (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier))) {
                                 if (root.activeRow) root.editSnippet(root.activeRow.id, true)
+                            } else if (event.key === Qt.Key_Delete && (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier))) {
+                                root.deleteHistory()
                             } else if (event.key === Qt.Key_C && (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier))) {
                                 if (selectedText.length) { copy(); event.accepted = true; return }
                                 root.copyOnly()
@@ -697,6 +722,13 @@ Item {
                         onClicked: root.editSnippet(root.activeRow.id, true)
                     }
                     SbButton { text: "Copy"; glyph: "󰆏"; enabled: root.activeRow !== null; onClicked: root.copyOnly() }
+                    SbButton {
+                        glyph: "󰆴"
+                        danger: true
+                        hint: "Delete clipboard entry (Ctrl+Delete)"
+                        enabled: root.ready && !root.pendingHistoryDelete && !root.pendingPaste && root.activeRow !== null && root.activeRow.kind === "clipboard"
+                        onClicked: root.deleteHistory()
+                    }
                     SbButton { glyph: "󰑐"; hint: "Reload library from disk"; enabled: root.ready && !root.pendingEditor && !root.pendingReload; onClicked: { root.expansionEnabled = false; root.resetScratch(); root.pendingRender = null; root.pendingReload = root.send("library-reload", {}) } }
                 }
 

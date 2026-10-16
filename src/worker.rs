@@ -261,6 +261,18 @@ impl Worker {
                 self.index = Index::new(records, &self.usage);
                 Ok(object(json!({"record": record})))
             }
+            "clipboard-delete" => {
+                let item = self.record(request)?;
+                if item.kind != Kind::Clipboard {
+                    return Err(Failure::Action("Select a clipboard history entry to delete."));
+                }
+                let record = item.id.clone();
+                self.history.delete(&self.store.root.join("history.local.json"), &record)?;
+                let mut records = self.history.records();
+                records.extend(self.store.library.snippets.iter().map(Record::from));
+                self.index = Index::new(records, &self.usage);
+                Ok(object(json!({"record": record, "deleted": true})))
+            }
             "snippet-get" => {
                 let record = text(request, "record").ok_or(Failure::Library("Invalid snippet identity."))?;
                 let snippet = if record.is_empty() {
@@ -525,6 +537,22 @@ mod tests {
             .filter(|e| e.as_ref().unwrap().file_name().to_string_lossy().starts_with(".snipboard-"))
             .count();
         assert_eq!(leftovers, 0);
+    }
+
+    #[test]
+    fn failed_history_delete_preserves_live_index() {
+        let (_directory, mut worker) = worker();
+        let captured = request(&mut worker, json!({"op": "clipboard-capture", "text": "Keep after failed delete"}));
+        let path = worker.store.root.join("history.local.json");
+        let before = fs::read(&path).unwrap();
+        let records = worker.index.records().to_vec();
+        FAIL_REPLACE.set(true);
+        let response = request(&mut worker, json!({"op": "clipboard-delete", "seq": 42, "record": captured["record"]}));
+        FAIL_REPLACE.set(false);
+        assert!(response.contains_key("error"));
+        assert_eq!(response["seq"], 42);
+        assert_eq!(worker.index.records(), records);
+        assert_eq!(fs::read(&path).unwrap(), before);
     }
 
     #[test]
