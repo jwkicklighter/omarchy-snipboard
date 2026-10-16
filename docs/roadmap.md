@@ -4,7 +4,7 @@
 
 This repository now contains a synthetic-data prototype. See [actual implementation and safety boundary](prototype.md), [installation](development.md), and [measurements](performance.md). Phase 1 is **not complete**: external expansion/paste safety and UI performance gates remain open. The feature goals are product direction; the phases below are not a release commitment.
 
-Latest increment: local snippet creation/editing/deletion, whole-library revision checks, explicit reload, and offscreen editor coverage. This develops part of Phase 2 without claiming that Phase 1's safety or performance blockers are resolved. Live-shell validation of the editor, import/export, and full sync/conflict review remain pending.
+Latest increment: snippet duplication and saving a clipboard result as a snippet, with explicit-save drafts, discard protection, and search-focused Ctrl/Super+N/E/D shortcuts for new/edit/duplicate-or-save. Duplicates preserve the template and notes but clear the keyword; clipboard text is escaped for literal reuse. Protocol and offscreen editor regression coverage accompany the existing whole-library revision checks. This develops part of Phase 2 without claiming that Phase 1's safety or performance blockers are resolved. Live-shell validation of the editor and these new actions, import/export, and full sync/conflict review remain pending.
 
 The helper has since been rewritten from Python plus a C++/QtCore matcher into a single Rust crate with the same protocol, storage format, and ranking. This changes no product behavior or phase status.
 

@@ -206,6 +206,62 @@ fn source_and_relative_data_paths_are_fatal() {
 }
 
 #[test]
+fn duplicate_drafts_are_explicit_independent_and_revision_checked() {
+    let directory = data();
+    let path = directory.path().join("library.json");
+    let mut worker = Worker::launch(directory.path());
+    let original = worker.request(json!({"op": "snippet-get", "record": "snippet-0000"}));
+    worker.request(json!({"op": "used", "record": "snippet-0000"}));
+    let before = fs::read(&path).unwrap();
+    let draft = worker.request(json!({"op": "snippet-draft", "record": "snippet-0000", "seq": 17}));
+    assert_eq!(draft["seq"], 17);
+    assert_eq!(draft["snippet"]["id"], "");
+    assert_eq!(draft["snippet"]["keyword"], "");
+    assert_eq!(draft["snippet"]["body"], original["snippet"]["body"]);
+    assert_eq!(draft["snippet"]["notes"], original["snippet"]["notes"]);
+    assert_eq!(draft["snippet"]["name"], format!("{} (copy)", original["snippet"]["name"].as_str().unwrap()));
+    assert_eq!(fs::read(&path).unwrap(), before, "Opening/canceling a draft never writes");
+    let saved = worker.request(json!({"op": "snippet-save", "revision": draft["revision"], "fields": fields(&draft["snippet"])}));
+    assert!(saved.get("error").is_none(), "{saved}");
+    assert_ne!(saved["record"], "snippet-0000");
+    assert_eq!(read_usage(&directory.path().join("usage.local.json")).unwrap().len(), 1);
+    let stale = worker.request(json!({"op": "snippet-save", "revision": draft["revision"], "fields": fields(&draft["snippet"])}));
+    assert!(stale["error"].as_str().unwrap().starts_with("Library changed"));
+    assert_eq!(worker.request(json!({"op": "snippet-get", "record": "snippet-0000"}))["snippet"], original["snippet"]);
+    for source in [json!("missing"), json!(null), json!(5)] {
+        assert!(worker.request(json!({"op": "snippet-draft", "record": source})).get("error").is_some());
+    }
+    worker.shutdown();
+    let mut worker = Worker::launch(directory.path());
+    assert_eq!(worker.request(json!({"op": "snippet-get", "record": saved["record"]}))["snippet"]["body"], draft["snippet"]["body"]);
+}
+
+#[test]
+fn clipboard_to_snippet_draft_preserves_source_and_requires_save() {
+    let directory = data();
+    let path = directory.path().join("library.json");
+    let mut worker = Worker::launch(directory.path());
+    let source = worker.request(json!({"op": "preview", "record": "clipboard-00001"}));
+    let before = fs::read(&path).unwrap();
+    let draft = worker.request(json!({"op": "snippet-draft", "record": "clipboard-00001"}));
+    assert_eq!(draft["snippet"]["id"], "");
+    assert_eq!(draft["snippet"]["keyword"], "");
+    assert_eq!(draft["snippet"]["notes"], "");
+    assert_eq!(fs::read(&path).unwrap(), before);
+    let saved = worker.request(json!({"op": "snippet-save", "revision": draft["revision"], "fields": fields(&draft["snippet"])}));
+    assert!(saved.get("error").is_none(), "{saved}");
+    assert_eq!(worker.request(json!({"op": "render", "record": saved["record"]}))["text"], source["body"]);
+    assert_eq!(worker.request(json!({"op": "preview", "record": "clipboard-00001"})), source);
+    fs::remove_file(&path).unwrap();
+    worker.request(json!({"op": "library-reload"}));
+    let readonly = worker.request(json!({"op": "snippet-draft", "record": "clipboard-00001"}));
+    assert_eq!(readonly["readonly"], true);
+    let refused = worker.request(json!({"op": "snippet-save", "revision": readonly["revision"], "fields": fields(&readonly["snippet"])}));
+    assert!(refused.get("error").is_some());
+    assert!(!path.exists());
+}
+
+#[test]
 fn snippet_crud_exact_text_stable_usage_and_restart() {
     let directory = data();
     let usage_path = directory.path().join("usage.local.json");

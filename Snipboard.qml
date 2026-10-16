@@ -121,9 +121,9 @@ Item {
         if (activeRow) send("copy", {record: activeRow.id, clipboard: clipboardInput.text})
     }
 
-    function editSnippet(record) {
-        if (!ready || editorVisible || pendingMutation || pendingReload) return
-        pendingEditor = send("snippet-get", {record: record})
+    function editSnippet(record, draft) {
+        if (!ready || editorVisible || pendingEditor || pendingMutation || pendingReload) return
+        pendingEditor = send(draft ? "snippet-draft" : "snippet-get", {record: record})
         expansionEnabled = false
         resetScratch()
         pendingRender = null
@@ -195,11 +195,11 @@ Item {
             }
             return
         }
-        if (message.op === "snippet-get") {
+        if (message.op === "snippet-get" || message.op === "snippet-draft") {
             if (message.seq !== pendingEditor || !opened) return
             pendingEditor = 0
             editorVisible = true
-            snippetEditor.load(message.snippet, message.revision, message.readonly)
+            snippetEditor.load(message.snippet, message.revision, message.readonly, message.op === "snippet-draft")
             return
         }
         if (message.op === "snippet-save" || message.op === "snippet-delete") {
@@ -625,7 +625,12 @@ Item {
                             else if (event.key === Qt.Key_PageDown) root.select(6)
                             else if (event.key === Qt.Key_PageUp) root.select(-6)
                             else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) root.paste()
-                            else if (event.key === Qt.Key_C && (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier))) {
+                            else if (event.key === Qt.Key_N && (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier))) root.editSnippet("")
+                            else if (event.key === Qt.Key_E && (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier))) {
+                                if (root.activeRow && root.activeRow.kind === "snippet") root.editSnippet(root.activeRow.id)
+                            } else if (event.key === Qt.Key_D && (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier))) {
+                                if (root.activeRow) root.editSnippet(root.activeRow.id, true)
+                            } else if (event.key === Qt.Key_C && (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier))) {
                                 if (selectedText.length) { copy(); event.accepted = true; return }
                                 root.copyOnly()
                             } else return // Preserve editing, selection, Home/End, IME, and paste.
@@ -657,8 +662,14 @@ Item {
                         }
                     }
                     Item { Layout.fillWidth: true }
-                    SbButton { text: "New"; glyph: "󰐕"; enabled: root.ready && !root.pendingEditor && !root.pendingReload; onClicked: root.editSnippet("") }
-                    SbButton { text: "Edit"; glyph: "󰏫"; enabled: root.ready && !root.pendingEditor && !root.pendingReload && root.activeRow !== null && root.activeRow.kind === "snippet"; onClicked: root.editSnippet(root.activeRow.id) }
+                    SbButton { text: "New"; glyph: "󰐕"; hint: "New snippet (Ctrl+N)"; enabled: root.ready && !root.pendingEditor && !root.pendingReload; onClicked: root.editSnippet("") }
+                    SbButton { text: "Edit"; glyph: "󰏫"; hint: "Edit snippet (Ctrl+E)"; enabled: root.ready && !root.pendingEditor && !root.pendingReload && root.activeRow !== null && root.activeRow.kind === "snippet"; onClicked: root.editSnippet(root.activeRow.id) }
+                    SbButton {
+                        text: root.activeRow && root.activeRow.kind === "clipboard" ? "Save snippet" : "Duplicate"
+                        hint: "Create a new snippet from this result (Ctrl+D)"
+                        enabled: root.ready && !root.pendingEditor && !root.pendingReload && root.activeRow !== null
+                        onClicked: root.editSnippet(root.activeRow.id, true)
+                    }
                     SbButton { text: "Copy"; glyph: "󰆏"; enabled: root.activeRow !== null; onClicked: root.copyOnly() }
                     SbButton { glyph: "󰑐"; hint: "Reload library from disk"; enabled: root.ready && !root.pendingEditor && !root.pendingReload; onClicked: { root.expansionEnabled = false; root.resetScratch(); root.pendingRender = null; root.pendingReload = root.send("library-reload", {}) } }
                 }

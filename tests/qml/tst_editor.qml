@@ -120,4 +120,21 @@ TestCase {
         compare(saves.count, 1)
         compare(saves.signalArguments[0][0].body, "")
     }
+
+    function test_prefilled_draft_requires_explicit_save_or_discard() {
+        const draft = {id: "", name: "Fixture (copy)", body: "🌍\r\n{date}", notes: "notes", keyword: ""}
+        editor.load(draft, "revision", false, true)
+        verify(editor.dirty)
+        verify(!field("deleteSnippet").visible)
+        editor.dismiss(true)
+        verify(editor.confirmDiscard)
+        compare(dismissals.count, 0)
+        editor.confirmDiscard = false
+        editor.submit()
+        compare(saves.count, 1)
+        compare(saves.signalArguments[0][0].body, draft.body)
+        compare(saves.signalArguments[0][0].keyword, "")
+        editor.load(fixture(), "revision", false)
+        verify(!editor.dirty)
+    }
 }

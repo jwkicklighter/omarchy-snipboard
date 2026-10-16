@@ -133,6 +133,21 @@ pub fn cursor_markers(body: &str) -> usize {
         .count()
 }
 
+/// Encode plain text as a template without activating existing variable syntax.
+pub fn literal_template(text: &str) -> String {
+    let mut body = String::new();
+    let mut previous = 0;
+    for token in tokens(text) {
+        body.push_str(&text[previous..token.start]);
+        body.push('{');
+        body.push_str(&text[token.start..token.end]);
+        body.push('}');
+        previous = token.end;
+    }
+    body.push_str(&text[previous..]);
+    body
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Rendered {
     pub text: String,
@@ -330,6 +345,29 @@ mod tests {
     fn template_renders_once_escapes_unknown_and_local_time() {
         let result = render("{date} {time} {clipboard} {unknown} {{date}}", "{time}", at(2026, 10, 15, 9, 7)).unwrap();
         assert_eq!(result.text, "2026-10-15 09:07 {time} {unknown} {date}");
+    }
+
+    #[test]
+    fn plain_text_template_roundtrip_never_activates_variables() {
+        for text in [
+            "\t🌍\r\n trailing \n",
+            "{date} {time} {clipboard} {cursor}{cursor} {unknown}",
+            "{{date}} {{{time}}} {{{{clipboard}}}} {{cursor}}",
+            "{{date} {time}} {{cursor} {{{clipboard}} {date}{time}",
+        ] {
+            let template = literal_template(text);
+            let rendered = render(&template, "not the source", None).unwrap();
+            assert_eq!(rendered.text, text, "{template}");
+            assert_eq!(rendered.cursor, None);
+        }
+        for opens in 0..8 {
+            for closes in 0..8 {
+                for name in ["date", "time", "clipboard", "cursor", "unknown"] {
+                    let text = format!("{}{name}{}", "{".repeat(opens), "}".repeat(closes));
+                    assert_eq!(render(&literal_template(&text), "unused", None).unwrap().text, text);
+                }
+            }
+        }
     }
 
     #[test]

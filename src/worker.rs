@@ -251,6 +251,23 @@ impl Worker {
                 Ok(response)
             }
             "snippet-save" => self.change_library(request, false),
+            "snippet-draft" => {
+                let item = self.record(request)?;
+                let (name, body, notes) = if item.kind == Kind::Snippet {
+                    // A duplicate keeps the template, but never shares identity,
+                    // expansion keyword, or usage with its source.
+                    let name: String = item.name.chars().take(249).collect();
+                    (format!("{name} (copy)"), item.body.clone(), item.notes.clone())
+                } else {
+                    (item.name.chars().take(256).collect(), crate::core::literal_template(&item.body), String::new())
+                };
+                if char_len(&body) > crate::core::MAX_BODY || body.contains('\0') {
+                    return Err(Failure::Library("This text cannot fit in a snippet without alteration. Source preserved."));
+                }
+                let mut response = self.library_state();
+                response.insert("snippet".into(), json!({"id": "", "name": name, "body": body, "notes": notes, "keyword": ""}));
+                Ok(response)
+            }
             "snippet-delete" => self.change_library(request, true),
             "library-reload" => self.reload_library(),
             "search" => {
@@ -489,6 +506,34 @@ mod tests {
             .filter(|e| e.as_ref().unwrap().file_name().to_string_lossy().starts_with(".snipboard-"))
             .count();
         assert_eq!(leftovers, 0);
+    }
+
+    #[test]
+    fn draft_limits_do_not_truncate_content_or_split_unicode_names() {
+        let (_directory, mut worker) = worker();
+        let mut library = worker.store.library.clone();
+        library.snippets[0].name = "🌍".repeat(256);
+        library.snippets[0].body = "\t🌍\r\n{date}{cursor}".into();
+        library.snippets[0].notes = "Exact\r\nnotes".into();
+        worker.index = worker.prepare_library(&library);
+        let response = request(&mut worker, json!({"op": "snippet-draft", "record": "snippet-0000"}));
+        assert_eq!(char_len(response["snippet"]["name"].as_str().unwrap()), 256);
+        assert_eq!(response["snippet"]["body"], library.snippets[0].body);
+        assert_eq!(response["snippet"]["notes"], library.snippets[0].notes);
+        let mut records = worker.index.records().to_vec();
+        let item = records.iter_mut().find(|r| r.id == "clipboard-00001").unwrap();
+        let source = "\t🌍\r\n{date} {{time}} {clipboard} {cursor}{cursor} {unknown}\n ";
+        item.body = source.into();
+        worker.index = Index::new(records, &worker.usage);
+        let response = request(&mut worker, json!({"op": "snippet-draft", "record": "clipboard-00001"}));
+        let body = response["snippet"]["body"].as_str().unwrap();
+        assert_eq!(render(body, "unused", None).unwrap().text, source);
+        let mut records = worker.index.records().to_vec();
+        let item = records.iter_mut().find(|r| r.id == "clipboard-00001").unwrap();
+        item.body = "{date}".repeat(crate::core::MAX_BODY / 6);
+        worker.index = Index::new(records, &worker.usage);
+        let response = request(&mut worker, json!({"op": "snippet-draft", "record": "clipboard-00001"}));
+        assert!(response["error"].as_str().unwrap().starts_with("This text cannot fit"));
     }
 
     #[test]

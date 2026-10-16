@@ -4,11 +4,13 @@ A native Omarchy shell prototype for finding and reusing clipboard text and snip
 
 ## Status
 
-Working **synthetic-history prototype**, not a first release. Native overlay, combined fuzzy search, separate preview, snippet creation/editing/deletion, usage persistence, and opt-in disposable expansion scratchpad are implemented. The manifest validates; the original picker loaded in the installed shell. The new editor has offscreen tests but still needs live-shell validation.
+Working **synthetic-history prototype**, not a first release. Native overlay, combined fuzzy search, separate preview, snippet creation/editing/duplication/deletion, save-result-as-snippet, usage persistence, and opt-in disposable expansion scratchpad are implemented. The manifest validates; the original picker loaded in the installed shell. The new editor has offscreen tests but still needs live-shell validation.
 
 Enter/result clicks paste the rendered selection into the previously focused window: the overlay closes, waits 150 ms for focus restoration, then the worker sets the clipboard and uses Hyprland's compositor key-state API, like Omarchy's universal Super+V. Normal apps receive Ctrl+V; apps tagged as terminals receive Ctrl+Shift+V. The latter reads the regular clipboard in Ghostty even when Shift+Insert reads the separate primary selection. Explicit modifier state avoids merging physically held modifiers into a virtual keyboard chord. Clipboard and input failures reopen the picker with an error. Reopening during the focus delay cancels the pending paste. This replaces clipboard contents and leaves the caret at the end (`{cursor}` is removed but external caret positioning is not implemented). Global typed expansion is unavailable: typing a keyword in another app currently has no effect.
 
 The scratchpad proves `!email`, Unicode, multiline insertion, and `{date}`, `{time}`, `{clipboard}`, `{cursor}` inside its own plain TextEdit. `{clipboard}` currently uses an explicit scratch value, never the existing system clipboard. Copy-only uses `wl-copy`; external copy/paste compatibility remains unverified.
+
+With search focused, Ctrl/Super+N opens a new snippet, Ctrl/Super+E edits a selected snippet, and Ctrl/Super+D duplicates a snippet or saves a clipboard result as a new snippet. Matching buttons offer the same actions. Prefilled drafts require an explicit Save; duplicates clear the keyword and start with independent usage. Clipboard results are still synthetic, and their recognized variable tokens are escaped to preserve literal text on reuse.
 
 ## Build and test
 

@@ -15,7 +15,8 @@ ColumnLayout {
     property bool confirmDelete: false
     property bool confirmDiscard: false
     property bool dismissPanel: false
-    readonly property bool dirty: nameInput.text !== loaded.name || bodyInput.text !== loaded.body || keywordInput.text !== loaded.keyword || notesInput.text !== loaded.notes
+    property bool unsavedDraft: false
+    readonly property bool dirty: unsavedDraft || nameInput.text !== loaded.name || bodyInput.text !== loaded.body || keywordInput.text !== loaded.keyword || notesInput.text !== loaded.notes
     signal saveRequested(var fields)
     signal deleteRequested()
     signal dismissed(bool closePanel)
@@ -55,8 +56,9 @@ ColumnLayout {
                        notes: notesInput.text === loaded.notes ? original.notes : notesInput.text})
     }
 
-    function load(snippet, version, locked) {
+    function load(snippet, version, locked, draft) {
         original = snippet
+        unsavedDraft = !!draft
         revision = version
         readOnly = locked
         busy = false
