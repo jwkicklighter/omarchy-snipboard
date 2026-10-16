@@ -25,9 +25,13 @@ struct Worker {
 
 impl Worker {
     fn launch(directory: &Path) -> Self {
-        let mut process = Command::new(WORKER)
-            .arg("--data")
-            .arg(directory)
+        let mut command = Command::new(WORKER);
+        command.arg("--data").arg(directory);
+        Self::spawn(&mut command)
+    }
+
+    fn spawn(command: &mut Command) -> Self {
+        let mut process = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -76,6 +80,34 @@ impl Drop for Worker {
 
 fn fields(snippet: &Value) -> Value {
     json!({"name": snippet["name"], "body": snippet["body"], "notes": snippet["notes"], "keyword": snippet["keyword"]})
+}
+
+#[test]
+fn paste_protocol_renders_templates_and_sends_one_paste_gesture() {
+    let directory = data();
+    let commands = tempfile::tempdir().unwrap();
+    for name in ["wl-copy", "hyprctl"] {
+        let path = commands.path().join(name);
+        fs::copy(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name), &path).unwrap();
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    let mut paths = vec![commands.path().to_owned()];
+    paths.extend(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()));
+    let mut command = Command::new(WORKER);
+    command.arg("--data").arg(directory.path())
+        .env("PATH", std::env::join_paths(paths).unwrap())
+        .env("SNIPBOARD_TEST_OUTPUT", commands.path());
+    let mut worker = Worker::spawn(&mut command);
+    let state = worker.request(json!({"op": "snippet-get"}));
+    let saved = worker.request(json!({"op": "snippet-save", "revision": state["revision"], "fields": {
+        "name": "Paste fixture", "body": "🌍\r\n{clipboard}{cursor}\n", "notes": "", "keyword": ""
+    }}));
+    let response = worker.request(json!({"op": "paste", "seq": 42, "record": saved["record"], "clipboard": "literal {date}"}));
+    assert_eq!(response, json!({"op": "paste", "seq": 42, "ok": true, "record": saved["record"]}));
+    assert_eq!(fs::read_to_string(commands.path().join("copied")).unwrap(), "🌍\r\nliteral {date}\n");
+    assert_eq!(fs::read_to_string(commands.path().join("input-args")).unwrap(), format!("eval\n{}\n", include_str!("../src/paste.lua")));
+    assert!(worker.request(json!({"op": "paste", "record": "missing"})).get("error").is_some());
+    worker.shutdown();
 }
 
 #[test]

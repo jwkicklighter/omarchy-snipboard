@@ -6,7 +6,7 @@ A native Omarchy shell prototype for finding and reusing clipboard text and snip
 
 Working **synthetic-history prototype**, not a first release. Native overlay, combined fuzzy search, separate preview, snippet creation/editing/deletion, usage persistence, and opt-in disposable expansion scratchpad are implemented. The manifest validates; the original picker loaded in the installed shell. The new editor has offscreen tests but still needs live-shell validation.
 
-**Safety limitation:** Enter/result clicks refuse external paste with an explicit copy-only fallback. Global typed expansion is unavailable, not merely hidden behind an enable switch. No external context has a verified safe insertion adapter. Do not use this as a replacement clipboard picker yet.
+Enter/result clicks paste the rendered selection into the previously focused window: the overlay closes, waits 150 ms for focus restoration, then the worker sets the clipboard and uses Hyprland's compositor key-state API, like Omarchy's universal Super+V. Normal apps receive Ctrl+V; apps tagged as terminals receive Ctrl+Shift+V. The latter reads the regular clipboard in Ghostty even when Shift+Insert reads the separate primary selection. Explicit modifier state avoids merging physically held modifiers into a virtual keyboard chord. Clipboard and input failures reopen the picker with an error. Reopening during the focus delay cancels the pending paste. This replaces clipboard contents and leaves the caret at the end (`{cursor}` is removed but external caret positioning is not implemented). Global typed expansion is unavailable: typing a keyword in another app currently has no effect.
 
 The scratchpad proves `!email`, Unicode, multiline insertion, and `{date}`, `{time}`, `{clipboard}`, `{cursor}` inside its own plain TextEdit. `{clipboard}` currently uses an explicit scratch value, never the existing system clipboard. Copy-only uses `wl-copy`; external copy/paste compatibility remains unverified.
 
@@ -20,7 +20,7 @@ make validate
 make benchmark
 ```
 
-Uses an installed Rust toolchain (cargo, Rust 1.89 or newer), Quickshell, wl-clipboard, and `setpriv` (util-linux); layout tests link libxkbcommon, and offscreen editor tests use Qt Quick Test's `qmltestrunner` (skipped if unavailable). Nothing installs system packages; the first build downloads the crates pinned in `Cargo.lock`. The helper (search, storage, templates) is a single Rust binary running as a separate persistent process, never inside the shell process. Build it before activation: the overlay launches `build/release/snipboard-worker`.
+Uses an installed Rust toolchain (cargo, Rust 1.89 or newer), Quickshell, wl-clipboard, Hyprland's Lua API (`hyprctl eval`), and `setpriv` (util-linux); layout tests link libxkbcommon, offscreen editor/handoff tests use Qt Quick Test's `qmltestrunner`, and compositor script tests use standalone `lua` (those optional suites skip if their runner is unavailable). Nothing installs system packages; the first build downloads the crates pinned in `Cargo.lock`. The helper (search, storage, templates) is a single Rust binary running as a separate persistent process, never inside the shell process. Build it before activation: the overlay launches `build/release/snipboard-worker`.
 
 ## Development installation
 

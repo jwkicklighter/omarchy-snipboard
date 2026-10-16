@@ -179,7 +179,7 @@ ColumnLayout {
             Layout.fillWidth: false
             Layout.preferredWidth: Style.space(240)
             spacing: Style.space(4)
-            Label { text: "Keyword" }
+            Label { text: "Keyword · scratch only" }
             Field { id: keywordInput; objectName: "snippetKeyword"; maximumLength: 64; readOnly: editor.busy; placeholderText: "Optional, e.g. !email" }
         }
     }

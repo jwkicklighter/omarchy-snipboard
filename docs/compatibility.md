@@ -1,5 +1,13 @@
 # Development baseline and compatibility matrix
 
+## Picker paste update (2026-10-16)
+
+The owner reported the original Shift+Insert picker paste worked in Omawrite but failed in Ghostty. Inspection of Ghostty's effective keybindings confirmed Shift+Insert reads the primary selection, while Ctrl+Shift+V reads the regular clipboard. Snipboard now uses Hyprland's explicit compositor key-state API, following Omarchy's universal clipboard bindings, with Ctrl+V for normal apps and Ctrl+Shift+V for Omarchy-tagged terminals. A separate 50 ms key release follows the key press, avoiding the virtual-keyboard modifier merging problem documented in Omarchy's binding source.
+
+The rebuilt release worker passed a live disposable Ghostty test: a raw terminal reader with bracketed paste enabled received the exact fixed Unicode/multiline fixture. The test used a separate prototype library under `/tmp`, opened and closed only its own Ghostty window, and did not execute the pasted text. The clipboard was intentionally replaced with the synthetic fixture. Automated tests cover script routing, key press/release, template rendering, command failures, zero-status IPC errors, and overlay focus handoff. Manifest/QML validation passes with the known metadata warnings.
+
+This does not establish compatibility with terminal shell prompts, Neovim modes, every app/layout, or external cursor positioning. Global keyword detection is still unimplemented; only Snipboard's scratch field provides keyword expansion. The earlier matrix and validation notes below are historical baselines.
+
 ## Inspected baseline
 
 Read-only inventory performed on 2026-10-15. This is a development baseline, not a tested minimum-version claim.

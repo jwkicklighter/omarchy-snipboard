@@ -16,10 +16,12 @@ fn editor_offscreen() {
     let cache = tempfile::Builder::new().prefix("snipboard-qml-").tempdir().unwrap();
     let output = Command::new(runner)
         .arg("-input")
-        .arg(source.join("tst_editor.qml"))
+        .arg(&source)
         .arg("-import")
         .arg(source.join("imports"))
         .env("QT_QPA_PLATFORM", "offscreen")
+        .env("QT_QPA_PLATFORMTHEME", "generic")
+        .env("QT_QUICK_CONTROLS_STYLE", "Basic")
         .env("QT_QUICK_BACKEND", "software")
         .env("QML_DISABLE_DISK_CACHE", "1")
         .env("XDG_CACHE_HOME", cache.path())

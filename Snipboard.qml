@@ -38,6 +38,7 @@ Item {
     property bool typedScratch: false
     property var pendingScratch: null
     property var pendingRender: null
+    property int pendingPaste: 0
     property real inputAt: 0
     property real openedAt: 0
     property var modelLatency: []
@@ -70,6 +71,7 @@ Item {
     }
 
     function open(payloadJson) {
+        pasteHandoff.cancel()
         if (editorVisible) { opened = true; return } // A repeated summon must not erase a draft.
         openedAt = Date.now()
         opened = true
@@ -135,8 +137,8 @@ Item {
     }
 
     function paste() {
-        // No generic sendshortcut/wtype fallback: target mode cannot be verified.
-        status = "Paste blocked: external input context is unverified. Use Copy only, or the disposable scratch target."
+        if (!ready || !opened || !activeRow || editorVisible || pendingPaste) return
+        pasteHandoff.start(activeRow.id, clipboardInput.text)
     }
 
     function resetScratch() {
@@ -167,12 +169,17 @@ Item {
     function receive(message) {
         if (message.op === "ready") {
             ready = true
-            status = message.count + " records · synthetic clipboard history · external paste/expansion blocked"
+            status = message.count + " records · synthetic clipboard history · Enter to paste"
             requestSearch()
             return
         }
         if (message.error) {
             status = message.error
+            if (message.seq === pendingPaste) {
+                pendingPaste = 0
+                opened = true
+                Qt.callLater(function() { search.forceActiveFocus() })
+            }
             if (message.seq === pendingMutation) {
                 pendingMutation = 0
                 snippetEditor.busy = false
@@ -206,7 +213,7 @@ Item {
             resetScratch()
             requestSearch()
             search.forceActiveFocus()
-            status = message.deleted ? "Snippet deleted from prototype library." : "Snippet saved to prototype library. External paste/expansion remain blocked."
+            status = message.deleted ? "Snippet deleted from prototype library." : "Snippet saved to prototype library."
             return
         }
         if (message.op === "library-reload") {
@@ -248,6 +255,10 @@ Item {
             preview = message.body
         } else if (message.op === "copy") {
             status = message.message
+        } else if (message.op === "paste" && message.seq === pendingPaste) {
+            pendingPaste = 0
+            status = "Paste shortcut sent."
+            send("used", {record: message.record})
         } else if (message.op === "scratch") {
             const pending = pendingScratch
             if (!pending || message.seq !== pending.seq) return
@@ -448,6 +459,8 @@ Item {
         }
         stderr: SplitParser { onRead: function(line) { root.status = "Helper diagnostic suppressed; run automated tests for details." } }
         onExited: {
+            pasteHandoff.cancel()
+            root.pendingPaste = 0
             root.ready = false
             root.runningSearch = 0
             root.pendingEditor = 0
@@ -456,6 +469,14 @@ Item {
             snippetEditor.busy = false
             snippetEditor.readOnly = true
             root.status = "Helper stopped. Invalid storage is preserved; rebuild/reload after resolving errors."
+        }
+    }
+
+    SbPasteHandoff {
+        id: pasteHandoff
+        onHideRequested: root.close()
+        onPasteRequested: function(record, clipboard) {
+            root.pendingPaste = root.send("paste", {record: record, clipboard: clipboard})
         }
     }
 

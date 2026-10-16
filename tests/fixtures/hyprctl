@@ -1,0 +1,5 @@
+#!/bin/sh
+test -f "$SNIPBOARD_TEST_OUTPUT/copied" || exit 9
+printf '%s\n' "$@" > "$SNIPBOARD_TEST_OUTPUT/input-args"
+printf '%s\n' "${SNIPBOARD_TEST_INPUT_REPLY:-ok}"
+exit "${SNIPBOARD_TEST_INPUT_EXIT:-0}"

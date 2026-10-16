@@ -1,0 +1,4 @@
+#!/bin/sh
+printf '%s\n' "$@" > "$SNIPBOARD_TEST_OUTPUT/copy-args"
+cat > "$SNIPBOARD_TEST_OUTPUT/copied"
+exit "${SNIPBOARD_TEST_COPY_EXIT:-0}"

@@ -21,12 +21,14 @@ pub const MAX_LINE: u64 = 512 * 1024;
 pub const FATAL: &str = "Prototype storage unavailable or invalid; existing files preserved.";
 const GENERIC: &str = "Action failed; check prototype storage or capability. Existing data was not reset.";
 const INVALID_SNIPPET: &str = "Invalid snippet: use a nonblank name (256 max), body ≤65,536, notes ≤4,096, and an optional whitespace-free keyword ≤64. Keywords must not duplicate or prefix another; use at most one {cursor}.";
+const PASTE_LUA: &str = include_str!("paste.lua");
 
 /// Only fixed, payload-free messages may cross the UI boundary.
 #[derive(Debug)]
 pub enum Failure {
     /// A library action failed; the response also carries the library state.
     Library(&'static str),
+    Action(&'static str),
     Generic,
 }
 
@@ -227,6 +229,12 @@ impl Worker {
         Ok(written?)
     }
 
+    fn paste(&mut self, text: &str) -> Response {
+        self.cleanup();
+        paste_text(text, Command::new("wl-copy"), Command::new("hyprctl"))?;
+        Ok(object(json!({"ok": true})))
+    }
+
     pub fn dispatch(&mut self, request: &Map<String, Value>) -> Response {
         let operation = request.get("op").and_then(Value::as_str).unwrap_or_default();
         match operation {
@@ -293,6 +301,15 @@ impl Worker {
                 self.copy(&result.text)?;
                 Ok(object(json!({"message": "Copy requested (clipboard ownership unacknowledged).", "confirmed": false})))
             }
+            "paste" => {
+                let item = self.record(request)?;
+                let record = item.id.clone();
+                let clipboard = text(request, "clipboard").ok_or(Failure::Generic)?;
+                let result = render(&item.body, clipboard, None)?;
+                let mut response = self.paste(&result.text)?;
+                response.insert("record".into(), record.into());
+                Ok(response)
+            }
             "used" => {
                 let item = self.record(request)?;
                 if item.kind == Kind::Snippet {
@@ -334,12 +351,39 @@ impl Worker {
                 response
             }
             Err(Failure::Generic) => object(json!({"error": GENERIC})),
+            Err(Failure::Action(message)) => object(json!({"error": message})),
         };
         response.insert("op".into(), request.get("op").cloned().unwrap_or(Value::Null));
         response.insert("seq".into(), request.get("seq").cloned().unwrap_or(json!(0)));
         let shutdown = request.get("op").and_then(Value::as_str) == Some("shutdown");
         (response, shutdown)
     }
+}
+
+fn paste_text(text: &str, mut copy: Command, mut input: Command) -> Response {
+    const COPY_FAILED: &str = "Paste failed: could not set the clipboard. Check wl-copy and the Wayland session, or use Copy only.";
+    const INPUT_FAILED: &str = "Text copied, but the paste shortcut failed. Check the Hyprland session or paste manually.";
+    // The default wl-copy parent exits only after setting the selection. Its
+    // background owner must remain alive to serve the target's clipboard request.
+    // Send text on stdin, never through shell interpolation or process arguments.
+    let mut child = copy.args(["--type", "text/plain;charset=utf-8"])
+        .stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null())
+        .spawn().map_err(|_| Failure::Action(COPY_FAILED))?;
+    let written = child.stdin.take().unwrap().write_all(text.as_bytes());
+    let copied = child.wait();
+    if written.is_err() || !copied.is_ok_and(|status| status.success()) {
+        return Err(Failure::Action(COPY_FAILED));
+    }
+    // The script is fixed code, never snippet text. Select the chord inside the
+    // compositor using Omarchy's terminal tags and explicitly control modifiers.
+    let output = input.args(["eval", PASTE_LUA])
+        .stdin(Stdio::null()).stderr(Stdio::null())
+        .output().map_err(|_| Failure::Action(INPUT_FAILED))?;
+    // hyprctl can report a Lua/IPC error on stdout even with exit status zero.
+    if !output.status.success() || output.stdout != b"ok\n" && output.stdout != b"ok" {
+        return Err(Failure::Action(INPUT_FAILED));
+    }
+    Ok(object(json!({"ok": true})))
 }
 
 /// Block termination signals here and handle them on a dedicated thread, which waits
@@ -476,5 +520,37 @@ mod tests {
         assert!(worker.child.is_none());
         assert!(started.elapsed() < Duration::from_secs(1));
         worker.cleanup();
+    }
+
+    #[test]
+    fn paste_copies_exact_bytes_before_shortcut_and_reports_failures() {
+        for (copy_exit, input_exit, reply) in [(0, 0, "ok"), (7, 0, "ok"), (0, 8, "ok"), (0, 0, "Lua error")] {
+            let directory = tempfile::tempdir().unwrap();
+            let fixture = |name: &str| {
+                let mut command = Command::new("/bin/sh");
+                command.arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name))
+                    .env("SNIPBOARD_TEST_OUTPUT", directory.path())
+                    .env("SNIPBOARD_TEST_COPY_EXIT", copy_exit.to_string())
+                    .env("SNIPBOARD_TEST_INPUT_EXIT", input_exit.to_string())
+                    .env("SNIPBOARD_TEST_INPUT_REPLY", reply);
+                command
+            };
+            let text = "--literal 🌍\r\n\tsecond line\n$(not a command) `literal`\n";
+            let result = paste_text(text, fixture("wl-copy"), fixture("hyprctl"));
+            assert_eq!(fs::read(directory.path().join("copied")).unwrap(), text.as_bytes());
+            assert_eq!(fs::read_to_string(directory.path().join("copy-args")).unwrap(), "--type\ntext/plain;charset=utf-8\n");
+            let input_args = directory.path().join("input-args");
+            if copy_exit != 0 {
+                assert!(!input_args.exists(), "Never paste the old clipboard after a copy failure");
+                assert!(matches!(result, Err(Failure::Action(message)) if message.starts_with("Paste failed:")));
+            } else {
+                assert_eq!(fs::read_to_string(input_args).unwrap(), format!("eval\n{PASTE_LUA}\n"));
+                if input_exit == 0 && reply == "ok" {
+                    assert!(result.is_ok());
+                } else {
+                    assert!(matches!(result, Err(Failure::Action(message)) if message.starts_with("Text copied,")));
+                }
+            }
+        }
     }
 }

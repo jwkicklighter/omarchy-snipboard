@@ -1,5 +1,15 @@
 # Prototype boundary and safety design
 
+## Explicit picker paste update (2026-10-16)
+
+The earlier baseline below predates external picker paste. Enter/result click now closes the overlay and waits 150 ms for focus restoration before the worker renders the captured selection, sets the clipboard, and executes a fixed Lua script via `hyprctl eval`. Like Omarchy's universal clipboard bindings, the script uses explicit compositor key-state events and a 50 ms delayed key release. It uses the shared `terminal`/`terminal*` tag to choose Ctrl+Shift+V for terminals and Ctrl+V otherwise. Unlike Omarchy's Shift+Insert terminal chord, Ctrl+Shift+V reads the regular clipboard even with Ghostty's default primary-selection binding. No snippet content enters the Lua source or command arguments. The normal `wl-copy` parent exits after selection setup; the shortcut runs only on success. Both process status and Hyprland's `ok` reply are checked. Errors reopen the picker. Reopening during the delay cancels the queued action; duplicate activation cannot replace its selection. Successful shortcut dispatch counts snippet usage but does not acknowledge insertion by the application.
+
+This explicit action replaces clipboard contents and uses an ordinary background clipboard owner that persists until replaced, independently of plugin unload. Copy-only retains its existing managed foreground owner. Text travels through stdin, preserving Unicode, whitespace, and newlines without shell interpretation or Return keystrokes. Targets must support the selected paste chord. `{cursor}` is removed, but external caret positioning is not implemented. Automatic external expansion remains unavailable; only the scratch field sends keyword candidates to the matcher. The rebuilt release worker passed a live disposable Ghostty test with exact Unicode/multiline text received through bracketed paste into a raw terminal reader. This proves that path, not shell prompt/Neovim behavior or the remaining application matrix.
+
+Regression coverage includes offscreen hide-before-paste ordering, cancellation and duplicate activation; command fixtures cover exact bytes, copy-before-shortcut ordering, nonzero exits, zero-status Lua errors, and template rendering through the real worker protocol. The real Lua script runs against an inert compositor API to test normal/terminal/dynamic tags, absent targets, modifier selection, and paired key events. These tests do not inject desktop input.
+
+## Earlier prototype baseline
+
 ## Implemented
 
 - Native kept-loaded overlay hosted by the existing Omarchy Quickshell instance, using the overlay manifest contract (`open`, `close`, `opened`). Compact centered surface, focused editable search, virtualized results, side preview, keyboard/mouse controls, All/Clipboard/Snippets filtering.
