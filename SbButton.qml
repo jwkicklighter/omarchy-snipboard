@@ -4,21 +4,54 @@ import qs.Commons
 
 Button {
     id: control
+    // Optional Nerd Font glyph drawn before the label.
+    property string glyph: ""
+    // Destructive actions take the urgent palette role.
+    property bool danger: false
+    // Emphasized default action (e.g. Save).
+    property bool primary: false
+    // Tooltip, and the accessible name for glyph-only buttons.
+    property string hint: ""
+    readonly property color tone: danger ? Color.urgent : Color.accent
+    readonly property bool lit: checked || down || primary
     font.family: Style.font.menuFamily
     font.pixelSize: Style.font.body
-    padding: Style.space(8)
-    contentItem: Text {
-        text: control.text
-        textFormat: Text.PlainText
-        font: control.font
-        color: control.checked || control.down ? Color.menu.selectedText : Color.menu.text
-        horizontalAlignment: Text.AlignHCenter
-        verticalAlignment: Text.AlignVCenter
+    leftPadding: Style.space(10)
+    rightPadding: Style.space(10)
+    topPadding: Style.space(5)
+    bottomPadding: Style.space(5)
+    implicitHeight: Math.max(Style.space(28), implicitContentHeight + topPadding + bottomPadding)
+    focusPolicy: Qt.TabFocus
+    opacity: enabled ? 1 : 0.4
+    Accessible.name: text || hint
+    ToolTip.visible: hint.length > 0 && hovered
+    ToolTip.delay: 500
+    ToolTip.text: hint
+    HoverHandler { cursorShape: control.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor }
+    contentItem: Row {
+        spacing: control.glyph.length && control.text.length ? Style.space(6) : 0
+        Text {
+            visible: control.glyph.length > 0
+            anchors.verticalCenter: parent.verticalCenter
+            text: control.glyph
+            textFormat: Text.PlainText
+            font.family: control.font.family
+            font.pixelSize: Style.font.subtitle
+            color: label.color
+        }
+        Text {
+            id: label
+            anchors.verticalCenter: parent.verticalCenter
+            text: control.text
+            textFormat: Text.PlainText
+            font: control.font
+            color: control.danger ? Color.urgent : control.lit ? Color.menu.selectedText : Color.menu.text
+        }
     }
     background: Rectangle {
         radius: Style.cornerRadius
-        color: control.checked || control.down ? Color.menu.selectedBackground : Style.controlFill(control.activeFocus, control.hovered, Color.menu.text, Color.accent)
-        border.color: Style.controlBorder(control.activeFocus, control.hovered, Color.menu.text, Color.accent)
-        border.width: Style.controlBorderWidth(control.activeFocus, control.hovered)
+        color: control.lit ? Color.menu.selectedBackground : Style.controlFill(control.visualFocus, control.hovered, Color.menu.text, control.tone)
+        border.color: control.lit ? control.tone : Style.controlBorder(control.visualFocus, control.hovered, control.danger ? Color.urgent : Color.menu.text, control.tone)
+        border.width: control.lit ? 1 : Style.controlBorderWidth(control.visualFocus, control.hovered)
     }
 }

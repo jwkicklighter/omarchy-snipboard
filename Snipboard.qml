@@ -8,6 +8,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Hyprland
 import qs.Commons
+import qs.Ui
 
 Item {
     id: root
@@ -469,6 +470,40 @@ Item {
         }
     }
 
+    component Caption: Text {
+        color: Color.muted
+        font.family: Style.font.menuFamily
+        font.pixelSize: Style.font.caption
+        textFormat: Text.PlainText
+        elide: Text.ElideRight
+    }
+
+    component Divider: Rectangle {
+        implicitWidth: Style.normalBorderWidth
+        implicitHeight: Style.normalBorderWidth
+        color: Util.alpha(Color.menu.border, 0.28)
+    }
+
+    component Scrollbar: ScrollBar {
+        id: bar
+        contentItem: Rectangle { implicitWidth: Style.space(4); radius: width / 2; color: Color.menu.text; opacity: bar.active ? 0.5 : 0.2 }
+        background: Item {}
+    }
+
+    component Input: TextField {
+        color: Color.menu.text
+        placeholderTextColor: Color.muted
+        selectionColor: Style.selectionFill
+        selectedTextColor: Color.menu.selectedText
+        font.family: Style.font.menuFamily
+        font.pixelSize: Style.font.body
+        leftPadding: Style.space(10)
+        rightPadding: Style.space(10)
+        topPadding: Style.space(7)
+        bottomPadding: Style.space(7)
+        background: Rectangle { color: Style.normalFill; border.color: parent.activeFocus ? Color.accent : Color.menu.border; border.width: 1; radius: Style.cornerRadius }
+    }
+
     PanelWindow {
         id: panel
         visible: root.opened
@@ -482,77 +517,129 @@ Item {
         Rectangle { anchors.fill: parent; color: Color.menu.scrim }
         MouseArea { anchors.fill: parent; onClicked: root.close() }
 
-        Rectangle {
+        BorderSurface {
             id: card
             anchors.centerIn: parent
-            width: Math.min(Style.space(900), panel.width - Style.space(32))
-            height: Math.min(Style.space(580), panel.height - Style.space(32))
+            width: Math.min(Style.space(900), panel.width - Style.gapsOut * 2)
+            height: Math.min(Style.space(600), panel.height - Style.gapsOut * 2)
             radius: Style.cornerRadius
             color: Color.menu.background
-            border.color: Color.menu.border
-            border.width: Math.max(1, Style.normalBorderWidth)
+            borderSpec: Border.surfaceSpec("menu", "border", Color.menu.border, Math.max(1, Style.space(2)))
+            padding: Style.spacing.panelPadding
             MouseArea { anchors.fill: parent }
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: Style.space(16)
+                anchors.topMargin: card.contentTopInset
+                anchors.rightMargin: card.contentRightInset
+                anchors.bottomMargin: card.contentBottomInset
+                anchors.leftMargin: card.contentLeftInset
                 spacing: Style.space(10)
 
+                // Header: identity, mode toggle, close.
                 RowLayout {
                     Layout.fillWidth: true
-                    Text { text: "Snipboard · prototype"; color: Color.menu.text; font.family: Style.font.menuFamily; font.pixelSize: Style.font.title }
+                    spacing: Style.space(8)
+                    Text { text: "󰅍"; color: Color.accent; font.family: Style.font.menuFamily; font.pixelSize: Style.font.iconLarge }
+                    Text { text: "Snipboard"; color: Color.menu.text; font.family: Style.font.menuFamily; font.pixelSize: Style.font.title; font.bold: true }
+                    Rectangle {
+                        implicitWidth: badge.implicitWidth + Style.space(12)
+                        implicitHeight: badge.implicitHeight + Style.space(4)
+                        radius: height / 2
+                        color: "transparent"
+                        border.color: Util.alpha(Color.accent, 0.6)
+                        border.width: 1
+                        Caption { id: badge; anchors.centerIn: parent; text: "prototype"; color: Color.accent }
+                    }
                     Item { Layout.fillWidth: true }
-                    SbButton { visible: !root.editorVisible; text: "Scratch"; checkable: true; checked: root.scratchVisible; onClicked: { root.scratchVisible = !root.scratchVisible; root.resetScratch() } }
-                    SbButton { text: "Close"; onClicked: root.close() }
+                    SbButton {
+                        visible: !root.editorVisible
+                        text: "Scratch"
+                        glyph: "󰏫"
+                        checkable: true
+                        checked: root.scratchVisible
+                        onClicked: { root.scratchVisible = !root.scratchVisible; root.resetScratch() }
+                    }
+                    SbButton { glyph: "󰅖"; hint: "Close (Esc)"; onClicked: root.close() }
                 }
 
-                TextField {
-                    id: search
+                // Search: large, quiet, accent underline when focused.
+                Item {
                     visible: !root.editorVisible
                     Layout.fillWidth: true
-                    placeholderText: "Search clipboard and snippets…"
-                    maximumLength: 256
-                    color: Color.menu.text
-                    placeholderTextColor: Color.muted
-                    selectionColor: Style.selectionFill
-                    selectedTextColor: Color.menu.selectedText
-                    font.family: Style.font.menuFamily
-                    font.pixelSize: Style.font.heading
-                    background: Rectangle { color: Style.normalFill; border.color: search.activeFocus ? Style.focusBorderColor : Color.menu.border; border.width: 1; radius: Style.cornerRadius }
-                    onTextChanged: root.requestSearch()
-                    Keys.priority: Keys.BeforeItem
-                    Keys.onPressed: function(event) {
-                        if (event.key === Qt.Key_Escape) {
-                            if (text.length) clear(); else root.close()
-                        } else if (event.key === Qt.Key_Down) root.select(1)
-                        else if (event.key === Qt.Key_Up) root.select(-1)
-                        else if (event.key === Qt.Key_PageDown) root.select(6)
-                        else if (event.key === Qt.Key_PageUp) root.select(-6)
-                        else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) root.paste()
-                        else if (event.key === Qt.Key_C && (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier))) {
-                            if (selectedText.length) { copy(); event.accepted = true; return }
-                            root.copyOnly()
-                        } else return // Preserve editing, selection, Home/End, IME, and paste.
-                        event.accepted = true
+                    implicitHeight: search.implicitHeight
+                    Text {
+                        id: searchGlyph
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "󰍉"
+                        color: search.activeFocus ? Color.accent : Color.muted
+                        font.family: Style.font.menuFamily
+                        font.pixelSize: Style.font.heading
+                    }
+                    TextField {
+                        id: search
+                        anchors.left: searchGlyph.right
+                        anchors.leftMargin: Style.space(10)
+                        anchors.right: parent.right
+                        placeholderText: "Search clipboard and snippets…"
+                        maximumLength: 256
+                        color: Color.menu.text
+                        placeholderTextColor: Color.muted
+                        selectionColor: Style.selectionFill
+                        selectedTextColor: Color.menu.selectedText
+                        font.family: Style.font.menuFamily
+                        font.pixelSize: Style.font.heading
+                        leftPadding: 0
+                        topPadding: Style.space(8)
+                        bottomPadding: Style.space(8)
+                        background: Item {}
+                        onTextChanged: root.requestSearch()
+                        Keys.priority: Keys.BeforeItem
+                        Keys.onPressed: function(event) {
+                            if (event.key === Qt.Key_Escape) {
+                                if (text.length) clear(); else root.close()
+                            } else if (event.key === Qt.Key_Down) root.select(1)
+                            else if (event.key === Qt.Key_Up) root.select(-1)
+                            else if (event.key === Qt.Key_PageDown) root.select(6)
+                            else if (event.key === Qt.Key_PageUp) root.select(-6)
+                            else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) root.paste()
+                            else if (event.key === Qt.Key_C && (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier))) {
+                                if (selectedText.length) { copy(); event.accepted = true; return }
+                                root.copyOnly()
+                            } else return // Preserve editing, selection, Home/End, IME, and paste.
+                            event.accepted = true
+                        }
+                    }
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        height: search.activeFocus ? Math.max(1, Style.space(2)) : Style.normalBorderWidth
+                        color: search.activeFocus ? Color.accent : Util.alpha(Color.menu.border, 0.28)
                     }
                 }
 
+                // Filters and actions.
                 RowLayout {
                     visible: !root.editorVisible
+                    Layout.fillWidth: true
+                    spacing: Style.space(6)
                     Repeater {
-                        model: [{label: "All", value: "all"}, {label: "Clipboard", value: "clipboard"}, {label: "Snippets", value: "snippet"}]
+                        model: [{label: "All", value: "all", glyph: "󰒺"}, {label: "Clipboard", value: "clipboard", glyph: "󰅌"}, {label: "Snippets", value: "snippet", glyph: "󰅩"}]
                         SbButton {
                             required property var modelData
                             text: modelData.label
+                            glyph: modelData.glyph
                             checked: root.kind === modelData.value
                             onClicked: { root.kind = modelData.value; root.requestSearch(); search.forceActiveFocus() }
                         }
                     }
                     Item { Layout.fillWidth: true }
-                    SbButton { text: "New"; enabled: root.ready && !root.pendingEditor && !root.pendingReload; onClicked: root.editSnippet("") }
-                    SbButton { text: "Edit"; enabled: root.ready && !root.pendingEditor && !root.pendingReload && root.activeRow !== null && root.activeRow.kind === "snippet"; onClicked: root.editSnippet(root.activeRow.id) }
-                    SbButton { text: "Reload library"; enabled: root.ready && !root.pendingEditor && !root.pendingReload; onClicked: { root.expansionEnabled = false; root.resetScratch(); root.pendingRender = null; root.pendingReload = root.send("library-reload", {}) } }
-                    SbButton { text: "Copy only"; enabled: root.activeRow !== null; onClicked: root.copyOnly() }
+                    SbButton { text: "New"; glyph: "󰐕"; enabled: root.ready && !root.pendingEditor && !root.pendingReload; onClicked: root.editSnippet("") }
+                    SbButton { text: "Edit"; glyph: "󰏫"; enabled: root.ready && !root.pendingEditor && !root.pendingReload && root.activeRow !== null && root.activeRow.kind === "snippet"; onClicked: root.editSnippet(root.activeRow.id) }
+                    SbButton { text: "Copy"; glyph: "󰆏"; enabled: root.activeRow !== null; onClicked: root.copyOnly() }
+                    SbButton { glyph: "󰑐"; hint: "Reload library from disk"; enabled: root.ready && !root.pendingEditor && !root.pendingReload; onClicked: { root.expansionEnabled = false; root.resetScratch(); root.pendingRender = null; root.pendingReload = root.send("library-reload", {}) } }
                 }
 
                 SbSnippetEditor {
@@ -573,7 +660,7 @@ Item {
                     visible: !root.editorVisible
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    spacing: Style.space(16)
+                    spacing: Style.spacing.panelPadding
                     ListView {
                         id: results
                         Layout.fillWidth: true
@@ -582,7 +669,8 @@ Item {
                         clip: true
                         model: displayModel
                         boundsBehavior: Flickable.StopAtBounds
-                        spacing: Style.space(4)
+                        spacing: Style.space(2)
+                        ScrollBar.vertical: Scrollbar {}
                         delegate: Rectangle {
                             id: row
                             required property string recordId
@@ -590,59 +678,106 @@ Item {
                             required property string kind
                             required property string summary
                             required property int index
+                            readonly property bool current: index === root.selected
                             width: results.width
-                            height: Style.space(62)
+                            height: Math.max(Style.space(50), Style.font.body + Style.font.caption + Style.space(26))
                             radius: Style.cornerRadius
-                            color: index === root.selected ? Color.menu.selectedBackground : "transparent"
-                            Column {
+                            color: current ? Color.menu.selectedBackground : "transparent"
+                            border.color: current ? Color.menu.selectedBorder : "transparent"
+                            border.width: current ? Style.selectedBorderWidth : 0
+                            RowLayout {
                                 anchors.fill: parent
-                                anchors.margins: Style.space(8)
-                                Text { width: parent.width; text: (row.kind === "snippet" ? "Snippet · " : "Clipboard · ") + row.name; textFormat: Text.PlainText; color: row.index === root.selected ? Color.menu.selectedText : Color.menu.text; font.family: Style.font.menuFamily; font.pixelSize: Style.font.body; elide: Text.ElideRight }
-                                Text { width: parent.width; text: row.summary; textFormat: Text.PlainText; color: Color.menu.text; opacity: 0.7; font.family: Style.font.menuFamily; font.pixelSize: Style.font.caption; elide: Text.ElideRight }
+                                anchors.leftMargin: Style.space(10)
+                                anchors.rightMargin: Style.space(12)
+                                spacing: Style.space(10)
+                                Text {
+                                    Layout.preferredWidth: Style.font.iconLarge + Style.space(4)
+                                    horizontalAlignment: Text.AlignHCenter
+                                    text: row.kind === "snippet" ? "󰅩" : "󰅌"
+                                    color: row.current ? Color.menu.selectedText : Color.muted
+                                    font.family: Style.font.menuFamily
+                                    font.pixelSize: Style.font.iconLarge
+                                }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Style.space(2)
+                                    Text { Layout.fillWidth: true; text: row.name; textFormat: Text.PlainText; color: row.current ? Color.menu.selectedText : Color.menu.text; font.family: Style.font.menuFamily; font.pixelSize: Style.font.title; elide: Text.ElideRight }
+                                    Text { Layout.fillWidth: true; text: row.summary; textFormat: Text.PlainText; color: Color.menu.text; opacity: 0.55; font.family: Style.font.menuFamily; font.pixelSize: Style.font.caption; elide: Text.ElideRight }
+                                }
                             }
                             MouseArea {
                                 anchors.fill: parent
                                 hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
                                 onPositionChanged: root.selected = row.index
                                 onClicked: { root.selected = row.index; root.paste() }
                             }
                         }
-                        Text { anchors.centerIn: parent; visible: !root.rows.length; text: root.ready ? "No matches" : "Loading…"; color: Color.menu.text; font.family: Style.font.menuFamily }
+                        Column {
+                            anchors.centerIn: parent
+                            width: parent.width
+                            spacing: Style.space(8)
+                            visible: !root.rows.length
+                            Text {
+                                width: parent.width
+                                horizontalAlignment: Text.AlignHCenter
+                                text: root.ready ? "󰅌" : "󰔟"
+                                color: Color.menu.selectedText
+                                opacity: 0.8
+                                font.family: Style.font.menuFamily
+                                font.pixelSize: Style.font.displayLarge
+                            }
+                            Text {
+                                width: parent.width
+                                horizontalAlignment: Text.AlignHCenter
+                                text: !root.ready ? "Loading…" : search.text.length ? "No matches for “" + search.text + "”" : "Nothing here yet"
+                                textFormat: Text.PlainText
+                                elide: Text.ElideMiddle
+                                color: Color.menu.text
+                                opacity: 0.7
+                                font.family: Style.font.menuFamily
+                                font.pixelSize: Style.font.title
+                            }
+                        }
                     }
+
+                    Divider { Layout.fillHeight: true }
 
                     ColumnLayout {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         Layout.preferredWidth: card.width / 2
-                        Text { text: root.scratchVisible ? "Disposable input · never an external app" : "Preview · exact stored text"; color: Color.menu.text; font.family: Style.font.menuFamily; font.pixelSize: Style.font.caption }
+                        spacing: Style.space(8)
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Caption { text: root.scratchVisible ? "SCRATCHPAD" : "PREVIEW"; font.letterSpacing: 1; font.bold: true }
+                            Caption {
+                                Layout.fillWidth: true
+                                horizontalAlignment: Text.AlignRight
+                                text: root.scratchVisible ? "Disposable input · never an external app" : root.activeRow ? (root.activeRow.kind === "snippet" ? "Snippet · exact text" : "Clipboard · exact text") : ""
+                            }
+                        }
                         ScrollView {
                             visible: !root.scratchVisible
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
-                            ScrollBar.vertical: ScrollBar {
-                                contentItem: Rectangle { implicitWidth: Style.space(6); radius: Style.cornerRadius; color: Color.menu.text; opacity: 0.5 }
-                                background: Rectangle { color: "transparent" }
-                            }
-                            TextArea { text: root.preview; readOnly: true; textFormat: TextEdit.PlainText; wrapMode: TextEdit.WrapAnywhere; color: Color.menu.text; selectionColor: Style.selectionFill; selectedTextColor: Color.menu.selectedText; font.family: Style.font.menuFamily; font.pixelSize: Style.font.body; background: Rectangle { color: Style.normalFill } }
+                            ScrollBar.vertical: Scrollbar {}
+                            TextArea { text: root.preview; readOnly: true; textFormat: TextEdit.PlainText; wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere; color: Color.menu.text; selectionColor: Style.selectionFill; selectedTextColor: Color.menu.selectedText; font.family: Style.font.menuFamily; font.pixelSize: Style.font.title; leftPadding: 0; rightPadding: Style.space(8); topPadding: 0; background: Item {} }
                         }
-                        TextField {
+                        Input {
                             id: clipboardInput
                             visible: root.scratchVisible
                             Layout.fillWidth: true
                             maximumLength: 16384
-                            placeholderText: "Explicit {clipboard} scratch value (not system clipboard)"
-                            color: Color.menu.text
-                            placeholderTextColor: Color.muted
-                            selectionColor: Style.selectionFill
-                            selectedTextColor: Color.menu.selectedText
-                            font.family: Style.font.menuFamily
-                            background: Rectangle { color: Style.normalFill; border.color: Color.menu.border; border.width: 1 }
+                            placeholderText: "{clipboard} value (not the system clipboard)"
                             onTextChanged: root.resetScratch()
                         }
                         SbButton {
                             visible: root.scratchVisible
-                            text: root.expansionEnabled ? "Scratch expansion: ON" : "Enable scratch expansion"
+                            Layout.fillWidth: true
+                            text: root.expansionEnabled ? "Scratch expansion on" : "Enable scratch expansion"
+                            glyph: root.expansionEnabled ? "󰄬" : "󰐊"
                             checked: root.expansionEnabled
                             onClicked: { root.expansionEnabled = !root.expansionEnabled; scratch.forceActiveFocus(); root.resetScratch() }
                         }
@@ -651,13 +786,10 @@ Item {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
-                            ScrollBar.vertical: ScrollBar {
-                                contentItem: Rectangle { implicitWidth: Style.space(6); radius: Style.cornerRadius; color: Color.menu.text; opacity: 0.5 }
-                                background: Rectangle { color: "transparent" }
-                            }
+                            ScrollBar.vertical: Scrollbar {}
                             TextArea {
                                 id: scratch
-                                placeholderText: "Opt in above, then type !email, !unicode, !multi, or !vars."
+                                placeholderText: "Enable expansion, then type !email, !unicode, !multi, or !vars."
                                 textFormat: TextEdit.PlainText
                                 wrapMode: TextEdit.WrapAnywhere
                                 color: Color.menu.text
@@ -666,7 +798,8 @@ Item {
                                 selectedTextColor: Color.menu.selectedText
                                 font.family: Style.font.menuFamily
                                 font.pixelSize: Style.font.body
-                                background: Rectangle { color: Style.normalFill; border.color: scratch.activeFocus ? Style.focusBorderColor : Color.menu.border; border.width: 1 }
+                                padding: Style.space(10)
+                                background: Rectangle { color: Style.normalFill; border.color: scratch.activeFocus ? Color.accent : Color.menu.border; border.width: 1; radius: Style.cornerRadius }
                                 onActiveFocusChanged: root.resetScratch()
                                 onCursorPositionChanged: root.scratchRevision++
                                 onSelectionStartChanged: root.scratchRevision++
@@ -679,19 +812,29 @@ Item {
                                 }
                             }
                         }
-                        SbButton { visible: root.scratchVisible; text: "Insert selected into scratch"; onClicked: root.insertScratch() }
+                        SbButton { visible: root.scratchVisible; Layout.fillWidth: true; text: "Insert selected into scratch"; glyph: "󰁅"; enabled: root.activeRow !== null; onClicked: root.insertScratch() }
                     }
                 }
 
-                Text {
+                Divider { Layout.fillWidth: true }
+
+                // Footer: status on the left, key hints on the right.
+                RowLayout {
                     Layout.fillWidth: true
-                    text: root.status
-                    textFormat: Text.PlainText
-                    color: Color.menu.text
-                    font.family: Style.font.menuFamily
-                    font.pixelSize: Style.font.caption
-                    wrapMode: Text.Wrap
-                    maximumLineCount: 3
+                    spacing: Style.space(12)
+                    Caption {
+                        Layout.fillWidth: true
+                        font.pixelSize: Style.font.bodySmall
+                        text: root.status
+                        wrapMode: Text.Wrap
+                        maximumLineCount: 2
+                    }
+                    Caption {
+                        visible: !root.editorVisible
+                        text: "↑↓ select   ⏎ paste   ^C copy   esc close"
+                        font.pixelSize: Style.font.bodySmall
+                        elide: Text.ElideNone
+                    }
                 }
             }
         }
