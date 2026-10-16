@@ -4,6 +4,8 @@
 
 This repository now contains a synthetic-data prototype. See [actual implementation and safety boundary](prototype.md), [installation](development.md), and [measurements](performance.md). Phase 1 is **not complete**: external expansion/paste safety and UI performance gates remain open. The feature goals are product direction; the phases below are not a release commitment.
 
+Latest increment: local snippet creation/editing/deletion, whole-library revision checks, explicit reload, and offscreen editor coverage. This develops part of Phase 2 without claiming that Phase 1's safety or performance blockers are resolved. Live-shell validation of the editor, import/export, and full sync/conflict review remain pending.
+
 The [confirmed decisions](decisions.md) define the first release: core clipboard/snippet functionality, usage-aware search, variables, user-managed folder sync, and optional typed expansion. Advanced preview providers, OCR, QR decoding, and automatic expansion undo follow later.
 
 ## Phase 1: Validate the integration and performance foundation

@@ -38,6 +38,10 @@ Or `make build test validate benchmark`. Tests and benchmarks use disposable dir
 
 QML lint currently exits 0 with installed-metadata warnings (shell singleton tokens declared as `QtObject`, Quickshell's runtime PanelWindow factory, and the QProcess enum). Warnings are reported, not called a clean lint pass. Compilation and runtime checks are separate.
 
+`make test` also runs the snippet editor with `qmltestrunner`, an offscreen software renderer, inert theme fixtures, and no shell/plugin activation. It exercises save shortcuts, exact unchanged text/CRLF, dirty-draft dismissal, delete confirmation, read-only/busy gates, and protocol size checks. It does not access the clipboard or synthesize desktop input. The Python wrapper skips this suite if Qt Quick Test is unavailable. These are not theme-integration or live-shell compatibility tests.
+
+Large-Unicode editor layout performance is unproven: an attempted offscreen test laying out 65,536 emoji timed out. The current size test checks Unicode counting without shaping that entire fixture. The editor's validation limit is not a UI responsiveness guarantee.
+
 The shell recursively watches the **entire installation**, including docs and build outputs. Writes can reload other non-authentication shell plugins. Avoid building during timing runs. Imports disable bytecode generation to limit watcher feedback. Git internals are excluded by the host. Do not run `omarchy plugin update` against this development working tree; use ordinary reviewed local git operations.
 
 ## Activation — separate, requires approval
@@ -74,6 +78,8 @@ These hooks edit only the plugin's disposable TextEdit, using fixed synthetic fi
 Use `python -B` for live probes to avoid bytecode-file writes triggering the host's installation watcher. After a shell restart, wait for `omarchy-shell shell ping` and plugin initialization before starting a probe; IPC availability alone need not imply plugin readiness.
 
 Manual workflow: open the overlay, choose **Scratch**, enable scratch expansion, then type `!email`, `!unicode`, `!multi`, or `!vars`. `{clipboard}` comes from the explicit field above it. **Insert selected into scratch** is distinct from the external-paste action. Search selection-copy stays ordinary; a dedicated **Copy only** button makes result copying explicit.
+
+Snippet editing (after separately approved activation): choose **New**, or select a snippet and choose **Edit**. Save with the button or Ctrl+S/Super+S. Name, body/template, optional keyword, and notes stay in prototype `library.json`; nothing is imported from existing snippets. Escape/Cancel preserves a dirty draft until you explicitly discard it. Delete asks for confirmation. Validation/save failures retain the draft. **Reload library** explicitly adopts the current valid file, or retains the previous library read-only on failure; it is unavailable while the editor is open. External changes are detected at save/reload, not watched. This is local editing, not complete folder sync or conflict review.
 
 ## Disable and remove without deleting source or data
 

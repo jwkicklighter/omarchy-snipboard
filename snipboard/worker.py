@@ -1,6 +1,7 @@
 """Persistent JSON-lines worker. Search never reads disk or launches processes."""
 
 import argparse
+import copy
 import fcntl
 import json
 import os
@@ -9,10 +10,15 @@ import signal
 import subprocess
 import sys
 import time
+import uuid
 
 from .core import MAX_KEYWORD, render, scratch_match, synthetic_library, synthetic_records, utf16_length
 from .native import NativeIndex
-from .storage import Store, atomic_json, read_json, validate_usage
+from .storage import Store, atomic_json, read_json, validate_library, validate_usage
+
+
+class LibraryActionError(ValueError):
+    """Only fixed, payload-free messages may cross the UI boundary."""
 
 
 class Worker:
@@ -39,8 +45,83 @@ class Worker:
                 self.child.wait()
         self.child = None
 
+    def library_state(self):
+        return {"revision": self.store.revision, "readonly": self.store.readonly}
+
+    def snippet(self, record):
+        item = self.index.by_id.get(record)
+        if not item or item["kind"] != "snippet":
+            raise LibraryActionError("Snippet no longer exists. Reopen the editor.")
+        return {key: item[key] for key in ("id", "name", "body", "notes", "keyword")}
+
+    def prepare_library(self, library):
+        records = [r for r in self.index.records if r["kind"] == "clipboard"]
+        records.extend(dict(s, kind="snippet") for s in library["snippets"])
+        return NativeIndex(records, self.usage)
+
+    def change_library(self, request):
+        if self.store.readonly:
+            raise LibraryActionError("Library is read-only. Review storage and explicitly reload before saving.")
+        if request.get("revision") != self.store.revision:
+            raise LibraryActionError("Library changed since this editor opened. Keep your draft and reopen before saving.")
+        record = request.get("record", "")
+        if not isinstance(record, str):
+            raise LibraryActionError("Invalid snippet identity.")
+        if record:
+            self.snippet(record)
+        library = copy.deepcopy(self.store.library)
+        snippets = library["snippets"]
+        if request["op"] == "snippet-delete":
+            if not record:
+                raise LibraryActionError("Select a saved snippet to delete.")
+            library["snippets"] = [s for s in snippets if s["id"] != record]
+        else:
+            fields = request.get("fields")
+            if not isinstance(fields, dict) or set(fields) != {"name", "body", "notes", "keyword"}:
+                raise LibraryActionError("Name, body, notes, and keyword are required.")
+            item = dict(fields, id=record or "snippet-" + uuid.uuid4().hex)
+            if record:
+                position = next(i for i, s in enumerate(snippets) if s["id"] == record)
+                snippets[position] = item
+            else:
+                snippets.append(item)
+            record = item["id"]
+        try:
+            validate_library(library)
+        except ValueError:
+            raise LibraryActionError("Invalid snippet: use a nonblank name (256 max), body ≤65,536, notes ≤4,096, and an optional whitespace-free keyword ≤64. Keywords must not duplicate or prefix another; use at most one {cursor}.") from None
+        # Prepare first, persist second, publish last: a failed save never changes search.
+        fresh = self.prepare_library(library)
+        try:
+            self.store.save(library)
+        except (OSError, ValueError):
+            fresh.close()
+            raise LibraryActionError("Save could not complete. Draft retained; review storage or external changes before reloading.") from None
+        previous, self.index = self.index, fresh
+        previous.close()
+        return dict(self.library_state(), record=record, deleted=request["op"] == "snippet-delete")
+
     def dispatch(self, request):
         operation = request.get("op")
+        if operation == "snippet-get":
+            record = request.get("record", "")
+            if not isinstance(record, str):
+                raise LibraryActionError("Invalid snippet identity.")
+            item = self.snippet(record) if record else {"id": "", "name": "", "body": "", "notes": "", "keyword": ""}
+            return dict(self.library_state(), snippet=item)
+        if operation in ("snippet-save", "snippet-delete"):
+            return self.change_library(request)
+        if operation == "library-reload":
+            try:
+                library = read_json(self.store.library_path, validate_library)
+                fresh = self.prepare_library(library)
+            except (OSError, ValueError):
+                self.store.readonly = True
+                raise LibraryActionError("Reload failed. Last valid library is available read-only; existing files were preserved.") from None
+            self.store.library, self.store.readonly = library, False
+            previous, self.index = self.index, fresh
+            previous.close()
+            return self.library_state()
         if operation == "search":
             start = time.perf_counter_ns()
             rows = self.index.search(request.get("query", ""), request.get("kind", "all"))
@@ -99,7 +180,7 @@ def serve(root):
         raise SystemExit(0)
     signal.signal(signal.SIGTERM, terminate)
     signal.signal(signal.SIGINT, terminate)
-    print(json.dumps({"op": "ready", "count": len(worker.index.records)}), flush=True)
+    print(json.dumps(dict(worker.library_state(), op="ready", count=len(worker.index.records))), flush=True)
     try:
         while True:
             line = sys.stdin.buffer.readline(512 * 1024 + 1)
@@ -115,9 +196,11 @@ def serve(root):
                 request = parsed
                 response = worker.dispatch(request)
                 response.update({"op": request.get("op"), "seq": request.get("seq", 0)})
+            except LibraryActionError as error:
+                response = dict(worker.library_state(), op=request.get("op"), seq=request.get("seq", 0), error=str(error))
             except (ValueError, KeyError, TypeError, OSError):
                 response = {"op": request.get("op"), "seq": request.get("seq", 0),
-                            "error": "Action failed; check prototype storage or capability. No data overwritten."}
+                            "error": "Action failed; check prototype storage or capability. Existing data was not reset."}
             print(json.dumps(response, ensure_ascii=True, separators=(",", ":")), flush=True)
             if request.get("op") == "shutdown":
                 break

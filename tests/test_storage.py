@@ -88,6 +88,28 @@ class StorageTests(unittest.TestCase):
         self.assertTrue(self.store.readonly)
         self.assertEqual(read_json(self.store.library_path, validate_library), external)
 
+    def test_missing_or_invalid_storage_on_save_becomes_readonly(self):
+        self.store.library_path.unlink()
+        with self.assertRaises(OSError):
+            self.store.save(self.library)
+        self.assertTrue(self.store.readonly)
+        self.assertEqual(self.store.library, self.library)
+        self.assertFalse(self.store.library_path.exists())
+
+    def test_template_validation_and_revision(self):
+        revision = self.store.revision
+        fresh = copy.deepcopy(self.library)
+        fresh["snippets"][0]["body"] = "{{cursor}} {cursor}"
+        self.store.save(fresh)
+        self.assertNotEqual(revision, self.store.revision)
+        self.assertEqual(Store(self.root).reload(), fresh)
+        for field, value in (("body", "{cursor}{cursor}"), ("name", " \t\n"), ("body", "\ud800")):
+            invalid = copy.deepcopy(fresh)
+            invalid["snippets"][0][field] = value
+            with self.assertRaises(ValueError):
+                self.store.save(invalid)
+        self.assertEqual(self.store.library, fresh)
+
 
 if __name__ == "__main__":
     unittest.main()

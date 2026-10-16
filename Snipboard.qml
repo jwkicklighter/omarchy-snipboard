@@ -15,7 +15,7 @@ Item {
     property var manifest
     property bool opened: false
     property bool ready: false
-    property string status: "Starting isolated synthetic-data helper…"
+    property string status: "Starting isolated prototype helper…"
     property string kind: "all"
     property int sequence: 0
     property int wantedSearch: 0
@@ -25,6 +25,10 @@ Item {
     property var rows: []
     property int selected: 0
     property string preview: ""
+    property bool editorVisible: false
+    property int pendingEditor: 0
+    property int pendingMutation: 0
+    property int pendingReload: 0
     property bool scratchVisible: false
     property bool expansionEnabled: false
     property bool injecting: false
@@ -65,6 +69,7 @@ Item {
     }
 
     function open(payloadJson) {
+        if (editorVisible) { opened = true; return } // A repeated summon must not erase a draft.
         openedAt = Date.now()
         opened = true
         expansionEnabled = false
@@ -77,7 +82,9 @@ Item {
     }
 
     function close() {
+        if (editorVisible) { snippetEditor.dismiss(true); return }
         opened = false
+        pendingEditor = 0
         expansionEnabled = false
         resetScratch()
         pendingRender = null
@@ -109,6 +116,21 @@ Item {
 
     function copyOnly() {
         if (activeRow) send("copy", {record: activeRow.id, clipboard: clipboardInput.text})
+    }
+
+    function editSnippet(record) {
+        if (!ready || editorVisible || pendingMutation || pendingReload) return
+        pendingEditor = send("snippet-get", {record: record})
+        expansionEnabled = false
+        resetScratch()
+        pendingRender = null
+    }
+
+    function mutateSnippet(operation, fields) {
+        if (!ready || snippetEditor.busy) return
+        snippetEditor.busy = true
+        snippetEditor.error = ""
+        pendingMutation = send(operation, {record: snippetEditor.original.id, revision: snippetEditor.revision, fields: fields})
     }
 
     function paste() {
@@ -144,11 +166,58 @@ Item {
     function receive(message) {
         if (message.op === "ready") {
             ready = true
-            status = message.count + " synthetic records · no existing history accessed · external paste/expansion blocked"
+            status = message.count + " records · synthetic clipboard history · external paste/expansion blocked"
             requestSearch()
             return
         }
-        if (message.error) { status = message.error; return }
+        if (message.error) {
+            status = message.error
+            if (message.seq === pendingMutation) {
+                pendingMutation = 0
+                snippetEditor.busy = false
+                snippetEditor.confirmDelete = false
+                snippetEditor.error = message.error
+                if (message.readonly !== undefined) snippetEditor.readOnly = message.readonly
+            }
+            if (message.seq === pendingEditor) pendingEditor = 0
+            if (message.seq === pendingReload) pendingReload = 0
+            if (message.op === "search") {
+                runningSearch = 0
+                if (message.seq !== wantedSearch) startSearch()
+            }
+            return
+        }
+        if (message.op === "snippet-get") {
+            if (message.seq !== pendingEditor || !opened) return
+            pendingEditor = 0
+            editorVisible = true
+            snippetEditor.load(message.snippet, message.revision, message.readonly)
+            return
+        }
+        if (message.op === "snippet-save" || message.op === "snippet-delete") {
+            if (message.seq !== pendingMutation) return
+            pendingMutation = 0
+            snippetEditor.busy = false
+            editorVisible = false
+            previewRecord = ""
+            preview = ""
+            previewSequence = 0
+            resetScratch()
+            requestSearch()
+            search.forceActiveFocus()
+            status = message.deleted ? "Snippet deleted from prototype library." : "Snippet saved to prototype library. External paste/expansion remain blocked."
+            return
+        }
+        if (message.op === "library-reload") {
+            if (message.seq !== pendingReload) return
+            pendingReload = 0
+            previewRecord = ""
+            preview = ""
+            previewSequence = 0
+            requestSearch()
+            status = "Library reloaded from disk. No clipboard history accessed."
+            return
+        }
         if (message.op === "search") {
             runningSearch = 0
             if (message.seq === wantedSearch) {
@@ -158,7 +227,10 @@ Item {
                     const row = rows[i]
                     const value = {recordId: row.id, name: row.name, kind: row.kind, summary: row.summary}
                     if (i >= displayModel.count) displayModel.append(value)
-                    else if (displayModel.get(i).recordId !== row.id) displayModel.set(i, value)
+                    else {
+                        const old = displayModel.get(i)
+                        if (old.recordId !== row.id || old.name !== row.name || old.summary !== row.summary || old.kind !== row.kind) displayModel.set(i, value)
+                    }
                 }
                 if (displayModel.count > rows.length) displayModel.remove(rows.length, displayModel.count - rows.length)
                 selected = 0
@@ -377,6 +449,11 @@ Item {
         onExited: {
             root.ready = false
             root.runningSearch = 0
+            root.pendingEditor = 0
+            root.pendingMutation = 0
+            root.pendingReload = 0
+            snippetEditor.busy = false
+            snippetEditor.readOnly = true
             root.status = "Helper stopped. Invalid storage is preserved; rebuild/reload after resolving errors."
         }
     }
@@ -423,14 +500,15 @@ Item {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    Text { text: "Snipboard · synthetic prototype"; color: Color.menu.text; font.family: Style.font.menuFamily; font.pixelSize: Style.font.title }
+                    Text { text: "Snipboard · prototype"; color: Color.menu.text; font.family: Style.font.menuFamily; font.pixelSize: Style.font.title }
                     Item { Layout.fillWidth: true }
-                    SbButton { text: "Scratch"; checkable: true; checked: root.scratchVisible; onClicked: { root.scratchVisible = !root.scratchVisible; root.resetScratch() } }
+                    SbButton { visible: !root.editorVisible; text: "Scratch"; checkable: true; checked: root.scratchVisible; onClicked: { root.scratchVisible = !root.scratchVisible; root.resetScratch() } }
                     SbButton { text: "Close"; onClicked: root.close() }
                 }
 
                 TextField {
                     id: search
+                    visible: !root.editorVisible
                     Layout.fillWidth: true
                     placeholderText: "Search clipboard and snippets…"
                     maximumLength: 256
@@ -460,6 +538,7 @@ Item {
                 }
 
                 RowLayout {
+                    visible: !root.editorVisible
                     Repeater {
                         model: [{label: "All", value: "all"}, {label: "Clipboard", value: "clipboard"}, {label: "Snippets", value: "snippet"}]
                         SbButton {
@@ -470,10 +549,28 @@ Item {
                         }
                     }
                     Item { Layout.fillWidth: true }
+                    SbButton { text: "New"; enabled: root.ready && !root.pendingEditor && !root.pendingReload; onClicked: root.editSnippet("") }
+                    SbButton { text: "Edit"; enabled: root.ready && !root.pendingEditor && !root.pendingReload && root.activeRow !== null && root.activeRow.kind === "snippet"; onClicked: root.editSnippet(root.activeRow.id) }
+                    SbButton { text: "Reload library"; enabled: root.ready && !root.pendingEditor && !root.pendingReload; onClicked: { root.expansionEnabled = false; root.resetScratch(); root.pendingRender = null; root.pendingReload = root.send("library-reload", {}) } }
                     SbButton { text: "Copy only"; enabled: root.activeRow !== null; onClicked: root.copyOnly() }
                 }
 
+                SbSnippetEditor {
+                    id: snippetEditor
+                    visible: root.editorVisible
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    onSaveRequested: function(fields) { root.mutateSnippet("snippet-save", fields) }
+                    onDeleteRequested: root.mutateSnippet("snippet-delete", null)
+                    onDismissed: function(closePanel) {
+                        root.editorVisible = false
+                        if (closePanel) root.close()
+                        else search.forceActiveFocus()
+                    }
+                }
+
                 RowLayout {
+                    visible: !root.editorVisible
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     spacing: Style.space(16)

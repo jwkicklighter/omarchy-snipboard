@@ -9,7 +9,8 @@ def main():
     subprocess.run(["omarchy", "plugin", "validate", str(root)], check=True)
     with tempfile.TemporaryDirectory(prefix="snipboard-lint-", dir="/tmp/opencode") as directory:
         (Path(directory) / "qs").symlink_to("/usr/share/omarchy/shell", target_is_directory=True)
-        result = subprocess.run(["/usr/lib/qt6/bin/qmllint", "-I", directory, str(root / "Snipboard.qml"), str(root / "SbButton.qml")], capture_output=True, text=True)
+        result = subprocess.run(["/usr/lib/qt6/bin/qmllint", "-I", directory,
+                                 *(str(root / name) for name in ("Snipboard.qml", "SbButton.qml", "SbSnippetEditor.qml"))], capture_output=True, text=True)
     output = result.stdout + result.stderr
     log = Path("/tmp/opencode/snipboard-qmllint.log")
     log.write_text(output)

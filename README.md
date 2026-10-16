@@ -4,7 +4,7 @@ A native Omarchy shell prototype for finding and reusing clipboard text and snip
 
 ## Status
 
-Working **synthetic-data prototype**, not a first release. Native overlay, combined fuzzy search, separate preview, usage persistence, and opt-in disposable expansion scratchpad are implemented. The manifest validates and the QML loads in the installed shell.
+Working **synthetic-history prototype**, not a first release. Native overlay, combined fuzzy search, separate preview, snippet creation/editing/deletion, usage persistence, and opt-in disposable expansion scratchpad are implemented. The manifest validates; the original picker loaded in the installed shell. The new editor has offscreen tests but still needs live-shell validation.
 
 **Safety limitation:** Enter/result clicks refuse external paste with an explicit copy-only fallback. Global typed expansion is unavailable, not merely hidden behind an enable switch. No external context has a verified safe insertion adapter. Do not use this as a replacement clipboard picker yet.
 
@@ -20,7 +20,7 @@ make validate
 make benchmark
 ```
 
-Uses installed CMake, a C++20 compiler, Qt6 Core development files, Python 3, Quickshell, wl-clipboard, and `setpriv` (util-linux); layout tests use libxkbcommon. Nothing installs packages. Python uses only the standard library. The compiled matcher runs inside a separate persistent helper, never inside the shell process.
+Uses installed CMake, a C++20 compiler, Qt6 Core development files, Python 3, Quickshell, wl-clipboard, and `setpriv` (util-linux); layout tests use libxkbcommon, and offscreen editor tests use Qt Quick Test's `qmltestrunner` (skipped if unavailable). Nothing installs packages. Python uses only the standard library. The compiled matcher runs inside a separate persistent helper, never inside the shell process.
 
 ## Development installation
 
@@ -30,7 +30,7 @@ At the owner's request, the **entire git repository** is in:
 
 `~/Work/omarchy-snipboard` is a symlink to that same directory; there is no second source copy. Activation is separate from installation. See [exact install, reload, disable, and unlink commands](docs/development.md).
 
-The overlay was enabled with approval for validation, then **left disabled** after cleanup checks. Existing clipboard configuration was not replaced or re-enabled. There are 23 passing automated tests; external application compatibility and the UI latency targets remain open blockers.
+The overlay was enabled with approval for validation, then **left disabled** after cleanup checks. This development increment does not enable it or change desktop settings. Existing clipboard configuration was not replaced or re-enabled. Backend and offscreen editor tests cover local editing; external application compatibility and the UI latency targets remain open blockers.
 
 Prototype data is separate, in `${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-snipboard-prototype/`, with owner-only files. Existing clipboard history, snippets, and capture ownership are untouched.
 
@@ -55,7 +55,7 @@ Prototype data is separate, in `${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-sn
 - [Prototype boundary and safety design](docs/prototype.md)
 - [Measured performance and limitations](docs/performance.md)
 
-The feature-goals document describes intended product behavior. The prototype documents distinguish implemented, tested, and blocked behavior. Full sync, history capture, snippet editing, rich previews, OCR, QR decoding, and automatic expansion undo are not implemented.
+The feature-goals document describes intended product behavior. The prototype documents distinguish implemented, tested, and blocked behavior. Full sync, import/export UI, history capture, rich previews, OCR, QR decoding, and automatic expansion undo are not implemented.
 
 ## License
 

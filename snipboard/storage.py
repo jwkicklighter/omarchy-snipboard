@@ -1,5 +1,6 @@
 """Versioned portable definitions and separate machine-local usage, never history."""
 
+import hashlib
 import json
 import math
 import os
@@ -8,7 +9,7 @@ import re
 import stat
 import tempfile
 
-from .core import MAX_BODY, validate_keywords
+from .core import MAX_BODY, VARIABLE, validate_keywords
 
 MAX_FILE = 8 * 1024 * 1024
 ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
@@ -30,8 +31,10 @@ def validate_library(value):
             if not isinstance(snippet[key], str) or len(snippet[key]) > maximum or "\x00" in snippet[key]:
                 raise ValueError("invalid snippet value")
             snippet[key].encode("utf-8")
-        if not ID.fullmatch(snippet["id"]) or snippet["id"] in ids or not snippet["name"]:
+        if not ID.fullmatch(snippet["id"]) or snippet["id"] in ids or not snippet["name"].strip():
             raise ValueError("invalid or duplicate stable id")
+        if sum(match[2] == "cursor" for match in VARIABLE.finditer(snippet["body"])) > 1:
+            raise ValueError("multiple cursor markers")
         ids.add(snippet["id"])
     if value["portable"] != {"dateFormat": "YYYY-MM-DD"}:
         raise ValueError("unsupported portable settings")
@@ -124,12 +127,27 @@ class Store:
         self.library, self.readonly = fresh, False
         return fresh
 
+    @property
+    def revision(self):
+        encoded = json.dumps(self.library, sort_keys=True, ensure_ascii=True, separators=(",", ":")).encode()
+        return hashlib.sha256(encoded).hexdigest()
+
     def save(self, library):
         if self.readonly:
             raise ValueError("storage is read-only after a failed reload")
-        current = read_json(self.library_path, validate_library)
+        try:
+            current = read_json(self.library_path, validate_library)
+        except (OSError, ValueError):
+            self.readonly = True
+            raise
         if current != self.library:
             self.readonly = True
             raise ValueError("external change requires explicit reload/review")
-        atomic_json(self.library_path, library, validate_library)
+        try:
+            atomic_json(self.library_path, library, validate_library)
+        except OSError:
+            # Replacement may already have happened before a directory fsync failure.
+            # Require explicit reload rather than letting a retry overwrite blindly.
+            self.readonly = True
+            raise
         self.library = library
