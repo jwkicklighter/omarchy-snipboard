@@ -9,3 +9,8 @@
 *.swo
 *~
 .DS_Store
+
+# Generated output only; prototype data lives outside this checkout
+__pycache__/
+*.pyc
+/build/

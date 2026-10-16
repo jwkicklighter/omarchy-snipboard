@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.jwkicklighter.snipboard",
+  "name": "Snipboard Prototype",
+  "version": "0.1.0",
+  "author": "Jordan Kicklighter",
+  "description": "Synthetic clipboard and snippet search; isolated expansion scratchpad",
+  "kinds": ["overlay"],
+  "keepLoaded": true,
+  "entryPoints": {"overlay": "Snipboard.qml"}
+}
