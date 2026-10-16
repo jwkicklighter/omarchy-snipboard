@@ -1,10 +1,11 @@
-//! Local, synthetic-only Snipboard prototype helper.
+//! Local Snipboard prototype helper.
 //!
 //! The shell process never loads this code: it runs as a separate persistent
 //! worker speaking JSON lines over stdin/stdout.
 
 pub mod core;
 pub mod dev;
+pub mod history;
 pub mod json;
 pub mod search;
 pub mod storage;

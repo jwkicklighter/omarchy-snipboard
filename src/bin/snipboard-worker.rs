@@ -1,6 +1,6 @@
 //! Persistent prototype helper. Usage: snipboard-worker [--data PATH]
 
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -15,6 +15,9 @@ fn default_data() -> PathBuf {
 }
 
 fn main() -> ExitCode {
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--clipboard-event")) {
+        return clipboard_event();
+    }
     let mut data = default_data();
     let mut arguments = std::env::args_os().skip(1);
     while let Some(argument) = arguments.next() {
@@ -35,6 +38,25 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// wl-paste invokes this once per selection, with exact bytes on stdin. Emit one
+/// ASCII JSON frame so multiline text cannot break the shell's line parser.
+fn clipboard_event() -> ExitCode {
+    if std::env::var("CLIPBOARD_STATE").is_ok_and(|state| state != "data") {
+        return ExitCode::SUCCESS;
+    }
+    let mut bytes = Vec::new();
+    if std::io::stdin().take(65537).read_to_end(&mut bytes).is_err() || bytes.len() > 65536 {
+        return ExitCode::SUCCESS;
+    }
+    let Ok(text) = String::from_utf8(bytes) else { return ExitCode::SUCCESS };
+    if text.is_empty() || text.contains('\0') {
+        return ExitCode::SUCCESS;
+    }
+    let event = snipboard::json::to_ascii_string(&serde_json::json!({"text": text}));
+    let _ = writeln!(std::io::stdout(), "{event}");
+    ExitCode::SUCCESS
 }
 
 fn usage() -> ExitCode {

@@ -4,13 +4,15 @@ A native Omarchy shell prototype for finding and reusing clipboard text and snip
 
 ## Status
 
-Working **synthetic-history prototype**, not a first release. Native overlay, combined fuzzy search, separate preview, snippet creation/editing/duplication/deletion, save-result-as-snippet, usage persistence, and opt-in disposable expansion scratchpad are implemented. The manifest validates; the original picker loaded in the installed shell. The new editor has offscreen tests but still needs live-shell validation.
+Working **text-history prototype**, not a first release. Native overlay, system clipboard text capture, combined fuzzy search, separate preview, snippet creation/editing/duplication/deletion, save-result-as-snippet, usage persistence, and opt-in disposable expansion scratchpad are implemented. The manifest validates; the original picker loaded in the installed shell. The new editor and clipboard watcher still need live-shell validation.
 
 Enter/result clicks paste the rendered selection into the previously focused window: the overlay closes, waits 150 ms for focus restoration, then the worker sets the clipboard and uses Hyprland's compositor key-state API, like Omarchy's universal Super+V. Normal apps receive Ctrl+V; apps tagged as terminals receive Ctrl+Shift+V. The latter reads the regular clipboard in Ghostty even when Shift+Insert reads the separate primary selection. Explicit modifier state avoids merging physically held modifiers into a virtual keyboard chord. Clipboard and input failures reopen the picker with an error. Reopening during the focus delay cancels the pending paste. This replaces clipboard contents and leaves the caret at the end (`{cursor}` is removed but external caret positioning is not implemented). Global typed expansion is unavailable: typing a keyword in another app currently has no effect.
 
 The scratchpad proves `!email`, Unicode, multiline insertion, and `{date}`, `{time}`, `{clipboard}`, `{cursor}` inside its own plain TextEdit. `{clipboard}` currently uses an explicit scratch value, never the existing system clipboard. Copy-only uses `wl-copy`; external copy/paste compatibility remains unverified.
 
-With search focused, Ctrl/Super+N opens a new snippet, Ctrl/Super+E edits a selected snippet, and Ctrl/Super+D duplicates a snippet or saves a clipboard result as a new snippet. Matching buttons offer the same actions. Prefilled drafts require an explicit Save; duplicates clear the keyword and start with independent usage. Clipboard results are still synthetic, and their recognized variable tokens are escaped to preserve literal text on reuse.
+With search focused, Ctrl/Super+N opens a new snippet, Ctrl/Super+E edits a selected snippet, and Ctrl/Super+D duplicates a snippet or saves a clipboard result as a new snippet. Matching buttons offer the same actions. Prefilled drafts require an explicit Save; duplicates clear the keyword and start with independent usage. Clipboard results are reused literally; saving them as snippets escapes recognized variable tokens.
+
+While the plugin is loaded (including when the picker is closed), `wl-paste --type text --watch` records the regular Wayland clipboard. Exact UTF-8 text up to 64 KiB is accepted; empty, binary/NUL-containing, oversized, and selections marked sensitive by wl-paste are skipped. Sensitive detection depends on the source application's hints, not universal password-field detection. Duplicates move to the top rather than creating extra entries. History persists locally in owner-only `history.local.json`, separately from snippets, with a 1,000-item / 30-day / 4 MiB text budget (also subject to the 8 MiB encoded-file limit). Retention runs on load and capture. Images, pause/delete/pin controls, configurable retention, and importing another clipboard manager's history are not implemented. Unload/disable stops capture; reload retries a failed watcher. This does not claim exclusive capture ownership or modify other clipboard services.
 
 ## Build and test
 
@@ -34,7 +36,7 @@ At the owner's request, the **entire git repository** is in:
 
 The overlay was enabled with approval for validation, then **left disabled** after cleanup checks. This development increment does not enable it or change desktop settings. Existing clipboard configuration was not replaced or re-enabled. Backend and offscreen editor tests cover local editing; external application compatibility and the UI latency targets remain open blockers.
 
-Prototype data is separate, in `${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-snipboard-prototype/`, with owner-only files. Existing clipboard history, snippets, and capture ownership are untouched.
+Prototype data is separate, in `${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-snipboard-prototype/`, with owner-only files. Other clipboard managers' history, snippets, and services are untouched. The initial snippet library still contains generated examples; synthetic clipboard entries are no longer loaded.
 
 ## Goals
 
@@ -57,7 +59,7 @@ Prototype data is separate, in `${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-sn
 - [Prototype boundary and safety design](docs/prototype.md)
 - [Measured performance and limitations](docs/performance.md)
 
-The feature-goals document describes intended product behavior. The prototype documents distinguish implemented, tested, and blocked behavior. Full sync, import/export UI, history capture, rich previews, OCR, QR decoding, and automatic expansion undo are not implemented.
+The feature-goals document describes intended product behavior. The prototype documents distinguish implemented, tested, and blocked behavior. Full sync, import/export UI, image history, rich previews, OCR, QR decoding, and automatic expansion undo are not implemented.
 
 ## License
 

@@ -11,7 +11,8 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Map, Value, json};
 
-use crate::core::{MAX_KEYWORD, char_len, render, scratch_match, synthetic_library, synthetic_records};
+use crate::core::{MAX_KEYWORD, Rendered, char_len, render, scratch_match, synthetic_library};
+use crate::history::History;
 use crate::json::{replace_lone_surrogates, to_ascii_string};
 use crate::search::{Index, Kind, RESULT_LIMIT, Record};
 use crate::storage::{Library, Snippet, Store, Usage, UsageEntry, read_library, read_usage, validate_library, write_usage};
@@ -78,6 +79,7 @@ pub struct Worker {
     _lock: File,
     pub usage: Usage,
     pub index: Index,
+    history: History,
     child: Option<Child>,
 }
 
@@ -100,8 +102,11 @@ impl Worker {
         lock.try_lock().map_err(|error| Error::Io(error.into()))?;
         let library = store.initialize(&synthetic_library(1000))?.clone();
         let usage = if store.usage_path.exists() { read_usage(&store.usage_path)? } else { Usage::new() };
-        let index = Index::new(synthetic_records(&library, 10000), &usage);
-        Ok(Worker { store, _lock: lock, usage, index, child: None })
+        let history = History::read(&store.root.join("history.local.json"), sys::now())?;
+        let mut records = history.records();
+        records.extend(library.snippets.iter().map(Record::from));
+        let index = Index::new(records, &usage);
+        Ok(Worker { store, _lock: lock, usage, index, history, child: None })
     }
 
     /// Stop the clipboard process this worker owns, if any. Never touches other processes.
@@ -235,9 +240,27 @@ impl Worker {
         Ok(object(json!({"ok": true})))
     }
 
+    fn rendered(&self, request: &Map<String, Value>) -> std::result::Result<Rendered, Failure> {
+        let item = self.record(request)?;
+        if item.kind == Kind::Clipboard {
+            // Clipboard text is never a template, including escaped variable syntax.
+            Ok(Rendered { text: item.body.clone(), cursor: None })
+        } else {
+            Ok(render(&item.body, text(request, "clipboard").ok_or(Failure::Generic)?, None)?)
+        }
+    }
+
     pub fn dispatch(&mut self, request: &Map<String, Value>) -> Response {
         let operation = request.get("op").and_then(Value::as_str).unwrap_or_default();
         match operation {
+            "clipboard-capture" => {
+                let body = text(request, "text").ok_or(Failure::Generic)?;
+                let record = self.history.capture(&self.store.root.join("history.local.json"), body, sys::now())?;
+                let mut records = self.history.records();
+                records.extend(self.store.library.snippets.iter().map(Record::from));
+                self.index = Index::new(records, &self.usage);
+                Ok(object(json!({"record": record})))
+            }
             "snippet-get" => {
                 let record = text(request, "record").ok_or(Failure::Library("Invalid snippet identity."))?;
                 let snippet = if record.is_empty() {
@@ -312,17 +335,14 @@ impl Worker {
                 }})))
             }
             "copy" => {
-                let body = self.record(request)?.body.clone();
-                let clipboard = text(request, "clipboard").ok_or(Failure::Generic)?;
-                let result = render(&body, clipboard, None)?;
+                let result = self.rendered(request)?;
                 self.copy(&result.text)?;
                 Ok(object(json!({"message": "Copy requested (clipboard ownership unacknowledged).", "confirmed": false})))
             }
             "paste" => {
                 let item = self.record(request)?;
                 let record = item.id.clone();
-                let clipboard = text(request, "clipboard").ok_or(Failure::Generic)?;
-                let result = render(&item.body, clipboard, None)?;
+                let result = self.rendered(request)?;
                 let mut response = self.paste(&result.text)?;
                 response.insert("record".into(), record.into());
                 Ok(response)
@@ -341,9 +361,7 @@ impl Worker {
                 Ok(object(json!({"ok": true})))
             }
             "render" => {
-                let body = self.record(request)?.body.clone();
-                let clipboard = text(request, "clipboard").ok_or(Failure::Generic)?;
-                let result = render(&body, clipboard, None)?;
+                let result = self.rendered(request)?;
                 Ok(object(json!({"cursor": result.utf16_cursor(), "text": result.text})))
             }
             "shutdown" => {
@@ -470,7 +488,8 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         let directory = tempfile::tempdir().unwrap();
         fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700)).unwrap();
-        let worker = Worker::new(directory.path()).unwrap();
+        let mut worker = Worker::new(directory.path()).unwrap();
+        worker.index = Index::new(crate::core::synthetic_records(&worker.store.library, 10000), &worker.usage);
         (directory, worker)
     }
 

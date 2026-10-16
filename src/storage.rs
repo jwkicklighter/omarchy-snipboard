@@ -1,4 +1,4 @@
-//! Versioned portable definitions and separate machine-local usage, never history.
+//! Versioned portable definitions and separate private machine-local data.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -158,7 +158,7 @@ pub fn parse_usage(raw: &[u8]) -> Result<Usage> {
 }
 
 /// Read a bounded, owner-only regular file without following symlinks.
-fn read_private(path: &Path) -> Result<Vec<u8>> {
+pub(crate) fn read_private(path: &Path) -> Result<Vec<u8>> {
     let file = OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW).open(path)?;
     let info = file.metadata()?;
     if !info.is_file() || info.uid() != sys::uid() || info.mode() & 0o077 != 0 {
@@ -204,7 +204,7 @@ impl Drop for Temporary {
 }
 
 /// Same-directory temporary file, fsync, atomic rename, then directory fsync.
-fn atomic_write<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+pub(crate) fn atomic_write<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     let mut encoded = serde_json::to_vec_pretty(value).map_err(|_| Error::Invalid("unserializable value"))?;
     encoded.push(b'\n');
     if encoded.len() as u64 > MAX_FILE {

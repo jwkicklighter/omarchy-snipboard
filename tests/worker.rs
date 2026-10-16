@@ -83,6 +83,54 @@ fn fields(snippet: &Value) -> Value {
 }
 
 #[test]
+fn clipboard_callback_capture_search_literal_reuse_and_restart() {
+    let directory = data();
+    let text = "  🌍\r\n{date} {{clipboard}} {cursor}\n";
+    let mut worker = Worker::launch(directory.path());
+    assert_eq!(worker.request(json!({"op": "search", "kind": "clipboard"}))["rows"], json!([]));
+    let mut callback = Command::new(WORKER).arg("--clipboard-event")
+        .env("CLIPBOARD_STATE", "data")
+        .stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+    callback.stdin.take().unwrap().write_all(text.as_bytes()).unwrap();
+    let output = callback.wait_with_output().unwrap();
+    assert!(output.stdout.is_ascii());
+    assert_eq!(output.stdout.iter().filter(|&&b| b == b'\n').count(), 1);
+    let event: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(event["text"], text);
+    let captured = worker.request(json!({"op": "clipboard-capture", "text": event["text"]}));
+    let record = captured["record"].clone();
+    assert!(record.as_str().unwrap().starts_with("clipboard-"));
+    assert_eq!(worker.request(json!({"op": "render", "record": record}))["text"], text);
+    worker.request(json!({"op": "clipboard-capture", "text": text}));
+    let rows = worker.request(json!({"op": "search", "query": "date", "kind": "clipboard"}));
+    assert_eq!(rows["rows"].as_array().unwrap().len(), 1);
+    assert_eq!(rows["rows"][0]["id"], record);
+    let path = directory.path().join("history.local.json");
+    assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+    worker.shutdown();
+    let mut worker = Worker::launch(directory.path());
+    assert_eq!(worker.request(json!({"op": "preview", "record": record}))["body"], text);
+    worker.shutdown();
+}
+
+#[test]
+fn clipboard_callback_ignores_sensitive_empty_binary_and_oversized_selections() {
+    for (state, bytes) in [
+        ("sensitive", b"private".to_vec()), ("nil", vec![]), ("clear", vec![]),
+        ("data", vec![]), ("data", vec![0xff]), ("data", b"nul\0".to_vec()),
+        ("data", vec![b'x'; 65537]),
+    ] {
+        let mut callback = Command::new(WORKER).arg("--clipboard-event").env("CLIPBOARD_STATE", state)
+            .stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+        // Sensitive callbacks can exit without reading stdin.
+        let _ = callback.stdin.take().unwrap().write_all(&bytes);
+        let output = callback.wait_with_output().unwrap();
+        assert!(output.status.success());
+        assert!(output.stdout.is_empty());
+    }
+}
+
+#[test]
 fn paste_protocol_renders_templates_and_sends_one_paste_gesture() {
     let directory = data();
     let commands = tempfile::tempdir().unwrap();
@@ -143,7 +191,8 @@ fn protocol_scratch_search_and_persistence() {
     assert_eq!(rendered["text"], "Hello — Καλημέρα 🌍");
     assert_eq!(rendered["cursor"], "Hello — Καλημέρα 🌍".encode_utf16().count());
     worker.request(json!({"op": "used", "record": "snippet-0000"}));
-    worker.request(json!({"op": "used", "record": "clipboard-00001"}));
+    let captured = worker.request(json!({"op": "clipboard-capture", "text": "Usage fixture"}));
+    worker.request(json!({"op": "used", "record": captured["record"]}));
     let usage = read_usage(&directory.path().join("usage.local.json")).unwrap();
     assert_eq!(usage["snippet-0000"].count, 1);
     assert_eq!(usage.len(), 1);
@@ -241,9 +290,11 @@ fn clipboard_to_snippet_draft_preserves_source_and_requires_save() {
     let directory = data();
     let path = directory.path().join("library.json");
     let mut worker = Worker::launch(directory.path());
-    let source = worker.request(json!({"op": "preview", "record": "clipboard-00001"}));
+    let captured = worker.request(json!({"op": "clipboard-capture", "text": "Exact 🌍\r\n{date} {{time}} {cursor}\n"}));
+    let record = captured["record"].clone();
+    let source = worker.request(json!({"op": "preview", "record": record}));
     let before = fs::read(&path).unwrap();
-    let draft = worker.request(json!({"op": "snippet-draft", "record": "clipboard-00001"}));
+    let draft = worker.request(json!({"op": "snippet-draft", "record": record}));
     assert_eq!(draft["snippet"]["id"], "");
     assert_eq!(draft["snippet"]["keyword"], "");
     assert_eq!(draft["snippet"]["notes"], "");
@@ -251,10 +302,10 @@ fn clipboard_to_snippet_draft_preserves_source_and_requires_save() {
     let saved = worker.request(json!({"op": "snippet-save", "revision": draft["revision"], "fields": fields(&draft["snippet"])}));
     assert!(saved.get("error").is_none(), "{saved}");
     assert_eq!(worker.request(json!({"op": "render", "record": saved["record"]}))["text"], source["body"]);
-    assert_eq!(worker.request(json!({"op": "preview", "record": "clipboard-00001"})), source);
+    assert_eq!(worker.request(json!({"op": "preview", "record": record})), source);
     fs::remove_file(&path).unwrap();
     worker.request(json!({"op": "library-reload"}));
-    let readonly = worker.request(json!({"op": "snippet-draft", "record": "clipboard-00001"}));
+    let readonly = worker.request(json!({"op": "snippet-draft", "record": record}));
     assert_eq!(readonly["readonly"], true);
     let refused = worker.request(json!({"op": "snippet-save", "revision": readonly["revision"], "fields": fields(&readonly["snippet"])}));
     assert!(refused.get("error").is_some());

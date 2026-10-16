@@ -169,7 +169,8 @@ Item {
     function receive(message) {
         if (message.op === "ready") {
             ready = true
-            status = message.count + " records · synthetic clipboard history · Enter to paste"
+            status = message.count + " records · recording clipboard text · Enter to paste"
+            clipboardWatcher.running = true
             requestSearch()
             return
         }
@@ -223,7 +224,11 @@ Item {
             preview = ""
             previewSequence = 0
             requestSearch()
-            status = "Library reloaded from disk. No clipboard history accessed."
+            status = "Library reloaded from disk."
+            return
+        }
+        if (message.op === "clipboard-capture") {
+            if (opened && !editorVisible) requestSearch()
             return
         }
         if (message.op === "search") {
@@ -295,7 +300,8 @@ Item {
         return JSON.stringify({matchingLastMs: matchMs, inputToModelAssignmentMs: modelLatency,
                                openToModelAssignmentMs: openLatency, syntheticInputToFrameSwappedMs: frameLatency,
                                openToFrameSwappedMs: openFrameLatency, physicalPresentationMeasured: false,
-                               rows: rows.length, ready: ready, searchFocused: search.activeFocus,
+                                rows: rows.length, ready: ready, searchFocused: search.activeFocus,
+                                clipboardCaptureVersion: 1, clipboardWatcherRunning: clipboardWatcher.running,
                                benchmarkRunning: benchmarkRunning, testPhase: testPhase, tests: testResults,
                                layoutResets: layoutResets, layoutProbeResult: layoutProbeResult})
     }
@@ -368,6 +374,7 @@ Item {
     Component.onCompleted: helper.running = true
     Component.onDestruction: {
         expansionEnabled = false
+        clipboardWatcher.running = false
         helper.running = false
     }
 
@@ -447,6 +454,24 @@ Item {
     }
 
     Process {
+        id: clipboardWatcher
+        // Capture the regular Wayland clipboard, never the primary selection.
+        // Each callback frames its stdin as JSON; no text is passed as arguments.
+        command: ["setpriv", "--pdeathsig", "TERM", "wl-paste", "--type", "text", "--watch",
+                  "setpriv", "--pdeathsig", "TERM", root.sourceDirectory + "/build/release/snipboard-worker", "--clipboard-event"]
+        stdout: SplitParser {
+            onRead: function(line) {
+                try {
+                    const event = JSON.parse(line)
+                    if (root.ready && typeof event.text === "string") root.send("clipboard-capture", {text: event.text})
+                } catch (error) { root.status = "Clipboard event rejected; private details suppressed." }
+            }
+        }
+        stderr: SplitParser { onRead: function(line) { root.status = "Clipboard capture unavailable. Check wl-paste and Wayland data-control support." } }
+        onExited: if (root.ready) root.status = "Clipboard capture stopped. Reload the plugin to retry."
+    }
+
+    Process {
         id: helper
         command: ["setpriv", "--pdeathsig", "TERM", root.sourceDirectory + "/build/release/snipboard-worker"]
         workingDirectory: root.sourceDirectory
@@ -459,6 +484,7 @@ Item {
         }
         stderr: SplitParser { onRead: function(line) { root.status = "Helper diagnostic suppressed; run automated tests for details." } }
         onExited: {
+            clipboardWatcher.running = false
             pasteHandoff.cancel()
             root.pendingPaste = 0
             root.ready = false
