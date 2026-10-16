@@ -1,10 +1,38 @@
 # Omarchy Snipboard
 
-A planned Omarchy plugin for fast clipboard history, reusable snippets, and automatic text expansion in the apps you use.
+A native Omarchy shell prototype for finding and reusing clipboard text and snippets.
 
 ## Status
 
-Initial project planning. No plugin implementation, installer, or runnable release exists yet.
+Working **synthetic-data prototype**, not a first release. Native overlay, combined fuzzy search, separate preview, usage persistence, and opt-in disposable expansion scratchpad are implemented. The manifest validates and the QML loads in the installed shell.
+
+**Safety limitation:** Enter/result clicks refuse external paste with an explicit copy-only fallback. Global typed expansion is unavailable, not merely hidden behind an enable switch. No external context has a verified safe insertion adapter. Do not use this as a replacement clipboard picker yet.
+
+The scratchpad proves `!email`, Unicode, multiline insertion, and `{date}`, `{time}`, `{clipboard}`, `{cursor}` inside its own plain TextEdit. `{clipboard}` currently uses an explicit scratch value, never the existing system clipboard. Copy-only uses `wl-copy`; external copy/paste compatibility remains unverified.
+
+## Build and test
+
+```sh
+cd ~/Work/omarchy-snipboard
+make build
+make test
+make validate
+make benchmark
+```
+
+Uses installed CMake, a C++20 compiler, Qt6 Core development files, Python 3, Quickshell, wl-clipboard, and `setpriv` (util-linux); layout tests use libxkbcommon. Nothing installs packages. Python uses only the standard library. The compiled matcher runs inside a separate persistent helper, never inside the shell process.
+
+## Development installation
+
+At the owner's request, the **entire git repository** is in:
+
+`~/.config/omarchy/plugins/io.github.jwkicklighter.snipboard/`
+
+`~/Work/omarchy-snipboard` is a symlink to that same directory; there is no second source copy. Activation is separate from installation. See [exact install, reload, disable, and unlink commands](docs/development.md).
+
+The overlay was enabled with approval for validation, then **left disabled** after cleanup checks. Existing clipboard configuration was not replaced or re-enabled. There are 23 passing automated tests; external application compatibility and the UI latency targets remain open blockers.
+
+Prototype data is separate, in `${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-snipboard-prototype/`, with owner-only files. Existing clipboard history, snippets, and capture ownership are untouched.
 
 ## Goals
 
@@ -23,8 +51,11 @@ Initial project planning. No plugin implementation, installer, or runnable relea
 - [Implementation roadmap and open decisions](docs/roadmap.md)
 - [Confirmed product decisions](docs/decisions.md)
 - [Development baseline and compatibility matrix](docs/compatibility.md)
+- [Development and reversible installation](docs/development.md)
+- [Prototype boundary and safety design](docs/prototype.md)
+- [Measured performance and limitations](docs/performance.md)
 
-The documentation describes intended behavior, not features that are already available.
+The feature-goals document describes intended product behavior. The prototype documents distinguish implemented, tested, and blocked behavior. Full sync, history capture, snippet editing, rich previews, OCR, QR decoding, and automatic expansion undo are not implemented.
 
 ## License
 

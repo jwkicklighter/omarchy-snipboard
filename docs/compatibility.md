@@ -56,3 +56,14 @@ Application packaging must be checked before writing exclusions or app-specific 
 - Disable/re-enable, shell restart, plugin update/removal, and clipboard restoration do not leave hooks or capture processes behind.
 
 Interactive validation must use scratch documents/input contexts with explicit approval before controlling apps, modifying desktop integration, or injecting text. The inventory itself did none of these.
+
+## Prototype validation update (2026-10-15)
+
+- Owner approved the source relocation/development link, enabling and opening this overlay (not replacing the clipboard picker), disposable scratch testing, temporary layout testing/restoration, and two separately approved shell restarts to defeat an observed component-cache issue.
+- Native QML overlay loaded in the **existing** shell, and its search reported focused/results-ready. Internal TextEdit probes passed email, Unicode, multiline, literal clipboard variables, and cursor placement. They simulate field edits, not physical keys.
+- Offline tests use the installed **libxkbcommon** to translate the actual US QWERTY and US Dvorak keymaps and complete `!email`. Matcher layout/context reset is unit-tested. This does **not** establish physical-keyboard or live-layout-switch compatibility.
+- Final TextEdit suites passed with each compositor layout active. A real Dvorak→QWERTY switch invalidated a partial scratch keyword, preventing stale expansion; Dvorak was restored. Text edits were simulated through the prototype, not physical key presses, so physical layout compatibility is still unverified.
+- All external application rows above remain **pending/unverified**. No commands or messages were inserted into terminals/chats, no private clipboard/history/library was read, and no general keyboard hook was installed.
+- Theme bindings are present; actual theme-switch/light/dark/scale validation remains pending. External copy-only behavior is also pending; a copy request is not treated as an acknowledged successful use.
+- Manifest validation passes. Installed QML lint exits 0 with reported host metadata warnings; see [development](development.md). [Performance](performance.md) separates matching, helper round trips, and render-loop proxies; initial UI targets were missed.
+- All 23 automated tests pass. Actual disable/re-enable showed one helper when enabled and zero when disabled. The final state is **disabled**, with no global hooks/bindings/watchers added. Final UI timing targets still miss; the latest measurements and limitations are recorded separately from the initial run.

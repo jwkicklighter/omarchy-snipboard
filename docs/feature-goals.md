@@ -4,7 +4,7 @@
 
 Make finding and reusing copied content or saved text feel immediate. A single Omarchy-native interface should serve both deliberate browsing and rapid keyboard-driven retrieval; optional typed keywords should make common snippets available without opening it.
 
-All behavior below is planned. Performance numbers are proposed acceptance targets, not measurements.
+This document specifies intended product behavior, not a claim that it is implemented. See [prototype status](prototype.md) and [actual measurements](performance.md). The performance numbers below remain acceptance targets.
 
 ## 1. Keyboard and mouse parity
 

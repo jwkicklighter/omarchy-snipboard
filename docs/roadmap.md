@@ -2,7 +2,7 @@
 
 ## Current scope
 
-This repository currently contains planning documentation only. The feature goals are the product direction; the phases below are a proposed delivery sequence, not a release commitment.
+This repository now contains a synthetic-data prototype. See [actual implementation and safety boundary](prototype.md), [installation](development.md), and [measurements](performance.md). Phase 1 is **not complete**: external expansion/paste safety and UI performance gates remain open. The feature goals are product direction; the phases below are not a release commitment.
 
 The [confirmed decisions](decisions.md) define the first release: core clipboard/snippet functionality, usage-aware search, variables, user-managed folder sync, and optional typed expansion. Advanced preview providers, OCR, QR decoding, and automatic expansion undo follow later.
 
