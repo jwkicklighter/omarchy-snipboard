@@ -436,7 +436,7 @@ Item {
 
     Process {
         id: helper
-        command: ["setpriv", "--pdeathsig", "TERM", "python", "-m", "snipboard.worker"]
+        command: ["setpriv", "--pdeathsig", "TERM", root.sourceDirectory + "/build/release/snipboard-worker"]
         workingDirectory: root.sourceDirectory
         stdinEnabled: true
         stdout: SplitParser {

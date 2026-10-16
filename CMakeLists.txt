@@ -1,7 +1,0 @@
-cmake_minimum_required(VERSION 3.20)
-project(snipboard LANGUAGES CXX)
-set(CMAKE_CXX_STANDARD 20)
-find_package(Qt6 REQUIRED COMPONENTS Core)
-add_library(snipboard-search SHARED native/search.cpp)
-target_link_libraries(snipboard-search PRIVATE Qt6::Core)
-target_compile_options(snipboard-search PRIVATE -Wall -Wextra -Wpedantic)

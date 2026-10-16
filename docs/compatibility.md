@@ -13,7 +13,7 @@ Read-only inventory performed on 2026-10-15. This is a development baseline, not
 | wl-clipboard | 2.3.0-1 |
 | wtype | 0.4-2 |
 | libxkbcommon | 1.13.2-1 |
-| Python | 3.14.7-1 |
+| Rust (rustc/cargo) | 1.98.1 |
 | Lua | 5.5.1-1 |
 
 `qs`, `hyprctl`, `wl-copy`, `wl-paste`, `wtype`, and `xkbcli` are available on PATH. QML lint is installed at `/usr/lib/qt6/bin/qmllint`, not on PATH. Node.js and Syncthing were not found in the package/PATH checks; neither is currently a selected runtime dependency. A sync folder may be managed by any compatible external tool.

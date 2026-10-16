@@ -28,13 +28,24 @@ After Unicode normalization was moved consistently to the boundary and the UI pr
 
 Cold readiness was 441.017 ms (one sample). Report both runs rather than selecting only the faster result: shared load/scheduling are uncontrolled, and neither matching-only run predicts UI responsiveness. Final raw synthetic diagnostics: `/tmp/opencode/snipboard-helper-final.json`.
 
+### Rust rewrite
+
+On 2026-10-16 the helper was rewritten as a single Rust binary: the Python worker, the Python reference matcher, and the C++/QtCore library were removed. Before removal, 1,251 searches (All/Clipboard/Snippets × 417 fixed and random queries) returned identical ranked IDs from the Rust worker and the Python specification, and library revisions matched byte-for-byte. One 390-sample run, same machine and dataset, Rust 1.98.1:
+
+| Rust implementation | p50 | p95 | p99 |
+| --- | ---: | ---: | ---: |
+| Matching only (in-process) | 2.601 | 5.522 | 5.825 |
+| Worker-reported matching | 4.239 | 5.833 | 6.015 |
+| Sequential helper round trip | 4.483 | 6.247 | 6.509 |
+
+Cold readiness was 79.502 ms (one sample). This is a single run under the same uncontrolled load as above; it is a helper measurement only and says nothing new about UI latency.
+
 Reproduce the matching and round-trip measurements:
 
 ```sh
-make build
-python -m tools.benchmark --rounds 30
-# Slower Python specification, useful for comparison:
-python -m tools.benchmark --reference --rounds 10
+make benchmark
+# equivalently, after `make build`:
+build/release/snipboard-tools benchmark --rounds 30
 ```
 
 These sequential tests include no rapid-query queueing, painting, input dispatch, or window activation. **They do not establish either end-to-end performance target.**
@@ -69,7 +80,7 @@ The frame signal is the first observed swap after model assignment, without a re
 Reproduce only after approving activation and scratch testing:
 
 ```sh
-python -B -m tools.probe benchmark
+build/release/snipboard-tools probe benchmark
 ```
 
 Do not build, edit documentation, or run tests concurrently: the installed host watches all installation files and may reload plugins. QML may remain cached after rescan; a separately approved shell restart may be necessary. Probe output lives under `/tmp/opencode`, not tracked data.

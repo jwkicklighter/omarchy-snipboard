@@ -6,6 +6,8 @@ This repository now contains a synthetic-data prototype. See [actual implementat
 
 Latest increment: local snippet creation/editing/deletion, whole-library revision checks, explicit reload, and offscreen editor coverage. This develops part of Phase 2 without claiming that Phase 1's safety or performance blockers are resolved. Live-shell validation of the editor, import/export, and full sync/conflict review remain pending.
 
+The helper has since been rewritten from Python plus a C++/QtCore matcher into a single Rust crate with the same protocol, storage format, and ranking. This changes no product behavior or phase status.
+
 The [confirmed decisions](decisions.md) define the first release: core clipboard/snippet functionality, usage-aware search, variables, user-managed folder sync, and optional typed expansion. Advanced preview providers, OCR, QR decoding, and automatic expansion undo follow later.
 
 ## Phase 1: Validate the integration and performance foundation

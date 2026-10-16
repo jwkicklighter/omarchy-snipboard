@@ -20,7 +20,7 @@ make validate
 make benchmark
 ```
 
-Uses installed CMake, a C++20 compiler, Qt6 Core development files, Python 3, Quickshell, wl-clipboard, and `setpriv` (util-linux); layout tests use libxkbcommon, and offscreen editor tests use Qt Quick Test's `qmltestrunner` (skipped if unavailable). Nothing installs packages. Python uses only the standard library. The compiled matcher runs inside a separate persistent helper, never inside the shell process.
+Uses an installed Rust toolchain (cargo, Rust 1.89 or newer), Quickshell, wl-clipboard, and `setpriv` (util-linux); layout tests link libxkbcommon, and offscreen editor tests use Qt Quick Test's `qmltestrunner` (skipped if unavailable). Nothing installs system packages; the first build downloads the crates pinned in `Cargo.lock`. The helper (search, storage, templates) is a single Rust binary running as a separate persistent process, never inside the shell process. Build it before activation: the overlay launches `build/release/snipboard-worker`.
 
 ## Development installation
 

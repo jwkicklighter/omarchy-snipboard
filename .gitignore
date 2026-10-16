@@ -10,7 +10,5 @@
 *~
 .DS_Store
 
-# Generated output only; prototype data lives outside this checkout
-__pycache__/
-*.pyc
+# Generated output only (Cargo target-dir); prototype data lives outside this checkout
 /build/

@@ -17,7 +17,7 @@ Repeat the relocation only from an **uninstalled, real** `~/Work/omarchy-snipboa
 
 ```sh
 cd ~/Work/omarchy-snipboard
-python -m tools.development install
+cargo run --release --bin snipboard-tools -- install
 ```
 
 The script refuses existing destinations, merges, cross-filesystem copying, or replacing an unexpected link. It never invokes shell IPC or enables anything. On this machine this command has **already been run**.
@@ -26,23 +26,22 @@ The script refuses existing destinations, merges, cross-filesystem copying, or r
 
 ```sh
 cd ~/Work/omarchy-snipboard
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --parallel 2
-python -m unittest discover -s tests -v
+cargo build --release
+cargo test --release
 omarchy plugin validate "$HOME/.config/omarchy/plugins/io.github.jwkicklighter.snipboard"
-python -m tools.validate
-python -m tools.benchmark --rounds 30
+build/release/snipboard-tools validate
+build/release/snipboard-tools benchmark --rounds 30
 ```
 
-Or `make build test validate benchmark`. Tests and benchmarks use disposable directories under `/tmp/opencode`, not real prototype data. The validator helper supplies a temporary `qs` import mapping outside the checkout. Full unsuppressed QML lint output is `/tmp/opencode/snipboard-qmllint.log`.
+Or `make build test validate benchmark`. Cargo's target directory is `build/` (see `.cargo/config.toml`). Tests and benchmarks use disposable owner-only directories under the system temporary directory (`$TMPDIR`, normally `/tmp`), not real prototype data. The validator supplies a temporary `qs` import mapping outside the checkout. Full unsuppressed QML lint output is `${TMPDIR:-/tmp}/snipboard-qmllint.log`.
 
 QML lint currently exits 0 with installed-metadata warnings (shell singleton tokens declared as `QtObject`, Quickshell's runtime PanelWindow factory, and the QProcess enum). Warnings are reported, not called a clean lint pass. Compilation and runtime checks are separate.
 
-`make test` also runs the snippet editor with `qmltestrunner`, an offscreen software renderer, inert theme fixtures, and no shell/plugin activation. It exercises save shortcuts, exact unchanged text/CRLF, dirty-draft dismissal, delete confirmation, read-only/busy gates, and protocol size checks. It does not access the clipboard or synthesize desktop input. The Python wrapper skips this suite if Qt Quick Test is unavailable. These are not theme-integration or live-shell compatibility tests.
+`make test` also runs the snippet editor with `qmltestrunner`, an offscreen software renderer, inert theme fixtures, and no shell/plugin activation. It exercises save shortcuts, exact unchanged text/CRLF, dirty-draft dismissal, delete confirmation, read-only/busy gates, and protocol size checks. It does not access the clipboard or synthesize desktop input. The Rust wrapper (`tests/qml.rs`) skips this suite if Qt Quick Test is unavailable. These are not theme-integration or live-shell compatibility tests.
 
 Large-Unicode editor layout performance is unproven: an attempted offscreen test laying out 65,536 emoji timed out. The current size test checks Unicode counting without shaping that entire fixture. The editor's validation limit is not a UI responsiveness guarantee.
 
-The shell recursively watches the **entire installation**, including docs and build outputs. Writes can reload other non-authentication shell plugins. Avoid building during timing runs. Imports disable bytecode generation to limit watcher feedback. Git internals are excluded by the host. Do not run `omarchy plugin update` against this development working tree; use ordinary reviewed local git operations.
+The shell recursively watches the **entire installation**, including docs and build outputs. Writes can reload other non-authentication shell plugins. Avoid building during timing runs: Cargo writes its output under `build/` inside the installation. Git internals are excluded by the host. Do not run `omarchy plugin update` against this development working tree; use ordinary reviewed local git operations.
 
 ## Activation — separate, requires approval
 
@@ -68,14 +67,14 @@ No second Quickshell instance is needed or used. QML changes that remain cached 
 ## Explicit scratch/latency probes — require testing approval
 
 ```sh
-python -B -m tools.probe scratch
-python -B -m tools.probe benchmark
+build/release/snipboard-tools probe scratch
+build/release/snipboard-tools probe benchmark
 omarchy-shell shell call io.github.jwkicklighter.snipboard metrics ''
 ```
 
 These hooks edit only the plugin's disposable TextEdit, using fixed synthetic fixtures. They do not produce physical keyboard events, read the system clipboard, copy content, or touch external applications. Scratch expansion starts off each time the panel opens and is turned off after a suite. Diagnostics contain timing arrays and booleans, not input text or payloads. See performance documentation for what the frame signal can and cannot measure.
 
-Use `python -B` for live probes to avoid bytecode-file writes triggering the host's installation watcher. After a shell restart, wait for `omarchy-shell shell ping` and plugin initialization before starting a probe; IPC availability alone need not imply plugin readiness.
+Build before starting live probes; running the prebuilt `snipboard-tools` binary writes nothing inside the installation (diagnostics go to the temporary directory). After a shell restart, wait for `omarchy-shell shell ping` and plugin initialization before starting a probe; IPC availability alone need not imply plugin readiness.
 
 Manual workflow: open the overlay, choose **Scratch**, enable scratch expansion, then type `!email`, `!unicode`, `!multi`, or `!vars`. `{clipboard}` comes from the explicit field above it. **Insert selected into scratch** is distinct from the external-paste action. Search selection-copy stays ordinary; a dedicated **Copy only** button makes result copying explicit.
 
@@ -93,7 +92,7 @@ Uninstall the development placement by **moving the repository back** to Work (n
 
 ```sh
 cd "$HOME/.config/omarchy/plugins/io.github.jwkicklighter.snipboard"
-python -m tools.development uninstall
+build/release/snipboard-tools uninstall
 cd "$HOME/Work/omarchy-snipboard"
 omarchy-shell shell rescanPlugins
 ```
@@ -102,7 +101,7 @@ Alternatively, to remove **only** the Work shortcut while retaining the reposito
 
 ```sh
 cd "$HOME/.config/omarchy/plugins/io.github.jwkicklighter.snipboard"
-python -m tools.development unlink-work
+build/release/snipboard-tools unlink-work
 ```
 
 The latter removes only the verified symlink. Neither operation deletes the project or `${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-snipboard-prototype`. **Do not use `omarchy plugin remove` for this placement:** that generic removal command is not the source-preserving uninstall procedure.

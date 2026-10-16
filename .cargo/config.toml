@@ -1,0 +1,3 @@
+# Keep generated output in the ignored /build directory the docs and watcher notes refer to.
+[build]
+target-dir = "build"
