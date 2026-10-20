@@ -4,7 +4,7 @@
   "name": "Snipboard Prototype",
   "version": "0.1.0",
   "author": "Jordan Kicklighter",
-  "description": "Synthetic clipboard and snippet search; isolated expansion scratchpad",
+  "description": "Local clipboard text history and snippet search with an optional expansion scratchpad",
   "kinds": ["overlay"],
   "keepLoaded": true,
   "entryPoints": {"overlay": "Snipboard.qml"}

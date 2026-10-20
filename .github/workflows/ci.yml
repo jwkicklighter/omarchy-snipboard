@@ -1,0 +1,59 @@
+name: Build and test
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  schedule:
+    - cron: '23 8 * * 1'
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Rust ${{ matrix.rust }} / Linux x86_64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: ['1.89', stable]
+    env:
+      SNIPBOARD_REQUIRE_TEST_RUNNERS: '1'
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: ${{ matrix.rust }}
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev xkb-data lua5.4 jq qt6-declarative-dev-tools qml6-module-qttest qml6-module-qtqml-workerscript qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtquick-layouts qml6-module-qtquick-controls qml6-module-qtquick-templates
+          echo /usr/lib/qt6/bin >> "$GITHUB_PATH"
+      - name: Check marketplace manifest with pinned Omarchy validator
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: omacom/omarchy
+          ref: 3ac43659dcbf88e84d951e3ce979b48a60a7d1f2 # quattro
+          path: .ci-omarchy
+          sparse-checkout: bin/omarchy-plugin-validate
+          sparse-checkout-cone-mode: false
+      - run: bash .ci-omarchy/bin/omarchy-plugin-validate .
+      - name: Build and test (including Qt, Lua, keyboard layouts and worker)
+        run: |
+          cargo build --release --locked
+          cargo test --release --locked
+          python3 -m unittest discover -s tests -p 'test_*.py'
+      - name: Package and smoke-test relocatable release
+        run: python3 tools/package.py --smoke-test
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: matrix.rust == 'stable'
+        with:
+          name: release-linux-x86_64
+          path: build/dist/*
+          if-no-files-found: error
+          retention-days: 14

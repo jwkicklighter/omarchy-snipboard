@@ -12,3 +12,5 @@
 
 # Generated output only (Cargo target-dir); prototype data lives outside this checkout
 /build/
+/.ci-omarchy/
+__pycache__/

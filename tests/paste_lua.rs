@@ -11,6 +11,7 @@ fn compositor_paste_chords_and_key_release() {
         .output();
     if let Err(error) = &output {
         if error.kind() == std::io::ErrorKind::NotFound {
+            assert!(std::env::var_os("SNIPBOARD_REQUIRE_TEST_RUNNERS").is_none(), "Lua interpreter required in CI");
             eprintln!("skipped: standalone Lua interpreter unavailable");
             return;
         }

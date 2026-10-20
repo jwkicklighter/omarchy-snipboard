@@ -9,6 +9,7 @@ fn editor_offscreen() {
         .into_iter()
         .find(|runner| Command::new(runner).arg("-h").output().is_ok());
     let Some(runner) = runner else {
+        assert!(std::env::var_os("SNIPBOARD_REQUIRE_TEST_RUNNERS").is_none(), "Qt Quick Test runner required in CI");
         eprintln!("skipped: Qt Quick Test runner unavailable");
         return;
     };

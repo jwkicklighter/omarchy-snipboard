@@ -1,6 +1,12 @@
 # Omarchy Snipboard
 
+[![Build and test](https://github.com/jwkicklighter/omarchy-snipboard/actions/workflows/ci.yml/badge.svg)](https://github.com/jwkicklighter/omarchy-snipboard/actions/workflows/ci.yml)
+
 A native Omarchy shell prototype for finding and reusing clipboard text and snippets.
+
+![Snipboard on the Omarchy desktop, showing sample clipboard history and snippets](preview.png)
+
+*Full-screen preview with fictional sample data.*
 
 Super+Shift+V opens a compact, centered picker on a transparent shell overlay,
 without painting over or dimming the surrounding desktop. Esc or clicking outside dismisses it. No Hyprland floating-window rule is required.
@@ -34,7 +40,84 @@ make validate
 make benchmark
 ```
 
-Uses an installed Rust toolchain (cargo, Rust 1.89 or newer), Quickshell, wl-clipboard, Hyprland's Lua API (`hyprctl eval`), and `setpriv` (util-linux); layout tests link libxkbcommon, offscreen editor/handoff tests use Qt Quick Test's `qmltestrunner`, and compositor script tests use standalone `lua` (those optional suites skip if their runner is unavailable). Nothing installs system packages; the first build downloads the crates pinned in `Cargo.lock`. The helper (search, storage, templates) is a single Rust binary running as a separate persistent process, never inside the shell process. Build it before activation: the overlay launches `build/release/snipboard-worker`.
+Uses an installed Rust toolchain (cargo, Rust 1.89 or newer), Quickshell, wl-clipboard, Hyprland's Lua API (`hyprctl eval`), and `setpriv` (util-linux); layout tests link libxkbcommon, offscreen editor/handoff tests use Qt Quick Test's `qmltestrunner`, and compositor script tests use standalone `lua` (those optional suites skip locally if their runner is unavailable, but are required in CI). Python 3.11+ runs the release tests and packaging tools. Nothing installs system packages; the first build downloads the crates pinned in `Cargo.lock`. The helper (search, storage, templates) is a single Rust binary running as a separate persistent process, never inside the shell process. Build it before activation: the overlay launches `build/release/snipboard-worker`.
+
+## Install, update, and remove
+
+Requires **Omarchy Quattro's plugin-capable shell**, its Qt 6/Quickshell runtime,
+Hyprland with `hyprctl eval`, `wl-copy`/`wl-paste` from wl-clipboard, and
+`setpriv` from util-linux. The prebuilt worker supports Linux x86_64 with glibc
+2.39 or newer (built on Ubuntu 24.04); other architectures must build from source.
+Install any missing dependencies yourself before enabling the plugin.
+
+**Manual build required:** Omarchy's plugin installer clones source; it does not
+build Rust or download release binaries. Review the code first, then install
+without `--enable`:
+
+```sh
+omarchy plugin add https://github.com/jwkicklighter/omarchy-snipboard
+# If prompted, choose NOT to enable until after the build.
+cd "$HOME/.config/omarchy/plugins/io.github.jwkicklighter.snipboard"
+cargo build --release --locked
+omarchy plugin validate .
+omarchy plugin enable io.github.jwkicklighter.snipboard
+omarchy restart shell
+omarchy-shell shell summon io.github.jwkicklighter.snipboard '{}'
+```
+
+Enabling starts recording regular clipboard text, including potentially private
+text unless the source marks it sensitive. Data stays in owner-only local files;
+there is no telemetry or upload. Plugins are **unsandboxed code**. The worker's
+process separation is not a security sandbox. No shortcuts or other clipboard
+services are changed by installation; Super+Shift+V is this machine's development
+binding, not an automatically installed global shortcut.
+
+Alternatively, download the versioned Linux x86_64 `.tar.gz` bundle and its
+`.sha256` file from [GitHub Releases](https://github.com/jwkicklighter/omarchy-snipboard/releases).
+In the download directory, verify the checksum (substitute the release version):
+
+```sh
+sha256sum --check snipboard-v0.1.0-linux-x86_64.tar.gz.sha256
+tar -tzf snipboard-v0.1.0-linux-x86_64.tar.gz
+```
+
+The bundle contains QML, documentation, license, metadata, and the prebuilt worker
+at its expected path. Extract it into `~/.config/omarchy/plugins/` **only when
+`io.github.jwkicklighter.snipboard/` does not already exist**. Then validate,
+enable, and restart as above. A checksum detects corruption; it is not an
+independent signature or marketplace security approval.
+
+For a source installation update, first disable the plugin, run
+`omarchy plugin update io.github.jwkicklighter.snipboard`, rebuild with
+`cargo build --release --locked` in its directory, then enable and restart the
+shell. For a bundle installation, disable and move the old installation out of
+the plugins directory before extracting a replacement; do not overlay versions.
+Omarchy's git update command does not update extracted bundles. Marketplace
+verification covers an exact commit; standard installation/update clones mutable
+upstream HEAD, which may differ from that verified snapshot.
+
+To stop recording and remove a **normal user installation**:
+
+```sh
+omarchy plugin disable io.github.jwkicklighter.snipboard
+omarchy plugin remove io.github.jwkicklighter.snipboard
+```
+
+Local history and snippets remain under
+`${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-snipboard-prototype/`.
+Remove that directory separately only if you want to permanently erase its data.
+For this owner's live development checkout, use the source-preserving
+[development uninstall procedure](docs/development.md) instead.
+
+## Releases and marketplace
+
+GitHub Actions builds/tests every push and pull request, and checks the latest
+stable Rust weekly alongside the minimum supported Rust. Pushing a matching
+`vX.Y.Z` tag publishes a tested bundle and SHA-256 checksum to GitHub Releases.
+Optional automation opens an exact-commit marketplace update request after a
+release; **marketplace maintainers still must approve publication**.
+See [release and marketplace setup](docs/releases.md) for the initial submission,
+token configuration, and release procedure.
 
 ## Development installation
 
