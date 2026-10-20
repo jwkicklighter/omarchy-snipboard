@@ -909,8 +909,10 @@ Item {
                                 else if (event.key === Qt.Key_N && command) root.editSnippet("")
                                 else if (event.key === Qt.Key_E && command) {
                                     if (root.activeRow && root.activeRow.kind === "snippet") root.editSnippet(root.activeRow.id)
+                                } else if (event.key === Qt.Key_S && command) {
+                                    if (root.activeRow && root.activeRow.kind === "clipboard") root.editSnippet(root.activeRow.id, true)
                                 } else if (event.key === Qt.Key_D && command) {
-                                    if (root.activeRow) root.editSnippet(root.activeRow.id, true)
+                                    if (root.activeRow && root.activeRow.kind === "snippet") root.editSnippet(root.activeRow.id, true)
                                 } else if (event.key === Qt.Key_Delete && command) {
                                     root.deleteHistory()
                                 } else if (event.key === Qt.Key_C && command) {

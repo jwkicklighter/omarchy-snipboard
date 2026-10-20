@@ -25,6 +25,14 @@ TestCase {
         compare(ids(SbActions.forRow(null)), ["new", "toggle-scratch", "reload"])
     }
 
+    function test_save_and_duplicate_shortcuts() {
+        const save = SbActions.forRow({id: "clipboard-1", kind: "clipboard"}).filter(function(a) { return a.id === "duplicate" })[0]
+        compare(save.label, "Save as snippet")
+        compare(save.keys, ["Ctrl", "S"])
+        const duplicate = SbActions.forRow({id: "snippet-1", kind: "snippet"}).filter(function(a) { return a.id === "duplicate" })[0]
+        compare(duplicate.keys, ["Ctrl", "D"])
+    }
+
     function test_filter_prefers_prefix_then_subsequence() {
         const list = SbActions.forRow({id: "clipboard-1", kind: "clipboard"})
         compare(SbActions.filter(list, "").length, list.length)
