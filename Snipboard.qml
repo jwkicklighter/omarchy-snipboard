@@ -852,7 +852,8 @@ Item {
                         anchors.rightMargin: card.gutter
                         spacing: Style.space(12)
                         Text {
-                            text: root.actionsOpen ? "󰁍" : "󰅍"
+                            visible: root.actionsOpen
+                            text: "󰁍"
                             color: Commons.Color.accent
                             font.family: Style.font.menuFamily
                             font.pixelSize: Style.font.display
@@ -1225,7 +1226,7 @@ Item {
 
                 Divider { Layout.fillWidth: true }
 
-                // Footer: identity and status on the left, primary keys on the right.
+                // Footer: status on the left, primary keys on the right.
                 RowLayout {
                     Layout.fillWidth: true
                     Layout.leftMargin: card.gutter
@@ -1233,8 +1234,6 @@ Item {
                     Layout.topMargin: Style.space(9)
                     Layout.bottomMargin: Style.space(9)
                     spacing: Style.space(10)
-                    Text { text: "󰅍"; color: Commons.Color.accent; font.family: Style.font.menuFamily; font.pixelSize: Style.font.title }
-                    Text { text: "Snipboard"; color: root.dimText; font.family: Style.font.menuFamily; font.pixelSize: Style.font.bodySmall }
                     Caption {
                         Layout.fillWidth: true
                         font.pixelSize: Style.font.bodySmall
