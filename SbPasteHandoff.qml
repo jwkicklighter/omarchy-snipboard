@@ -6,11 +6,11 @@ QtObject {
     property var pending: null
     readonly property bool waiting: pending !== null
     signal hideRequested()
-    signal pasteRequested(string record, string clipboard)
+    signal pasteRequested(string record)
 
-    function start(record, clipboard) {
+    function start(record) {
         if (waiting || !record) return
-        pending = {record: record, clipboard: clipboard}
+        pending = {record: record}
         hideRequested()
         delay.start()
     }
@@ -25,7 +25,7 @@ QtObject {
         onTriggered: {
             const request = root.pending
             root.pending = null
-            if (request) root.pasteRequested(request.record, request.clipboard)
+            if (request) root.pasteRequested(request.record)
         }
     }
 }

@@ -145,7 +145,7 @@ Item {
 
     function copyOnly(row) {
         row = row || activeRow
-        if (row) send("copy", {record: row.id, clipboard: clipboardInput.text})
+        if (row) send("copy", {record: row.id})
     }
 
     function deleteHistory(row) {
@@ -241,7 +241,7 @@ Item {
     function paste(row) {
         row = row || activeRow
         if (!ready || !opened || !row || editorVisible || pendingPaste) return
-        pasteHandoff.start(row.id, clipboardInput.text)
+        pasteHandoff.start(row.id)
     }
 
     function resetScratch() {
@@ -637,8 +637,8 @@ Item {
     SbPasteHandoff {
         id: pasteHandoff
         onHideRequested: root.close()
-        onPasteRequested: function(record, clipboard) {
-            root.pendingPaste = root.send("paste", {record: record, clipboard: clipboard})
+        onPasteRequested: function(record) {
+            root.pendingPaste = root.send("paste", {record: record})
         }
     }
 

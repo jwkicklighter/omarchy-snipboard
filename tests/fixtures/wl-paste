@@ -1,0 +1,3 @@
+#!/bin/sh
+printf '%s\n' "$@" > "$SNIPBOARD_TEST_OUTPUT/paste-args"
+cat "$SNIPBOARD_TEST_OUTPUT/selection"

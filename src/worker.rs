@@ -1,7 +1,7 @@
 //! Persistent JSON-lines worker. Search never reads disk or launches processes.
 
 use std::fs::{File, OpenOptions};
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead, Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -10,6 +10,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde_json::{Map, Value, json};
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::core::{MAX_KEYWORD, Rendered, char_len, render, scratch_match, synthetic_library};
 use crate::history::History;
@@ -234,9 +235,9 @@ impl Worker {
         Ok(written?)
     }
 
-    fn paste(&mut self, text: &str) -> Response {
+    fn paste(&mut self, result: &Rendered) -> Response {
         self.cleanup();
-        paste_text(text, Command::new("wl-copy"), Command::new("hyprctl"))?;
+        paste_text(&result.text, cursor_steps(result), Command::new("wl-copy"), Command::new("hyprctl"))?;
         Ok(object(json!({"ok": true})))
     }
 
@@ -246,7 +247,7 @@ impl Worker {
             // Clipboard text is never a template, including escaped variable syntax.
             Ok(Rendered { text: item.body.clone(), cursor: None })
         } else {
-            Ok(render(&item.body, text(request, "clipboard").ok_or(Failure::Generic)?, None)?)
+            render_template(&item.body, request)
         }
     }
 
@@ -355,7 +356,7 @@ impl Worker {
                 let item = self.record(request)?;
                 let record = item.id.clone();
                 let result = self.rendered(request)?;
-                let mut response = self.paste(&result.text)?;
+                let mut response = self.paste(&result)?;
                 response.insert("record".into(), record.into());
                 Ok(response)
             }
@@ -407,7 +408,55 @@ impl Worker {
     }
 }
 
-fn paste_text(text: &str, mut copy: Command, mut input: Command) -> Response {
+// Explicit clipboard values are reserved for deterministic scratchpad/protocol tests.
+// Ordinary copy/paste reads the selection before wl-copy replaces it.
+fn render_template(body: &str, request: &Map<String, Value>) -> std::result::Result<Rendered, Failure> {
+    let clipboard = match request.get("clipboard") {
+        Some(value) => value.as_str().ok_or(Failure::Generic)?.to_owned(),
+        None if crate::core::tokens(body).any(|t| !t.escaped && t.variable == crate::core::Variable::Clipboard) => {
+            let mut command = Command::new("timeout");
+            command.args(["2", "wl-paste", "--no-newline", "--type", "text"]);
+            read_clipboard(command)?
+        }
+        None => String::new(),
+    };
+    Ok(render(body, &clipboard, None)?)
+}
+
+fn read_clipboard(mut command: Command) -> std::result::Result<String, Failure> {
+    const FAILED: Failure = Failure::Action("Could not read clipboard text. Copy some text and try again.");
+    let mut child = command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null())
+        .spawn().map_err(|_| FAILED)?;
+    let mut bytes = Vec::new();
+    let read = child.stdout.take().unwrap().take((crate::core::MAX_CLIPBOARD * 4 + 1) as u64).read_to_end(&mut bytes);
+    if read.is_err() || bytes.len() > crate::core::MAX_CLIPBOARD * 4 {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(FAILED);
+    }
+    if !child.wait().is_ok_and(|status| status.success()) {
+        return Err(FAILED);
+    }
+    let value = String::from_utf8(bytes).map_err(|_| FAILED)?;
+    if value.contains('\0') || char_len(&value) > crate::core::MAX_CLIPBOARD {
+        return Err(FAILED);
+    }
+    Ok(value)
+}
+
+fn cursor_steps(result: &Rendered) -> usize {
+    result.cursor.map_or(0, |cursor| {
+        let suffix: String = result.text.chars().skip(cursor).collect();
+        suffix.graphemes(true).count()
+    })
+}
+
+fn paste_script(steps: usize) -> String {
+    // Only a bounded integer enters Lua, never snippet or clipboard content.
+    PASTE_LUA.replace("local cursor_steps = 0", &format!("local cursor_steps = {steps}"))
+}
+
+fn paste_text(text: &str, steps: usize, mut copy: Command, mut input: Command) -> Response {
     const COPY_FAILED: &str = "Paste failed: could not set the clipboard. Check wl-copy and the Wayland session, or use Copy only.";
     const INPUT_FAILED: &str = "Text copied, but the paste shortcut failed. Check the Hyprland session or paste manually.";
     // The default wl-copy parent exits only after setting the selection. Its
@@ -423,7 +472,7 @@ fn paste_text(text: &str, mut copy: Command, mut input: Command) -> Response {
     }
     // The script is fixed code, never snippet text. Select the chord inside the
     // compositor using Omarchy's terminal tags and explicitly control modifiers.
-    let output = input.args(["eval", PASTE_LUA])
+    let output = input.args(["eval", &paste_script(steps)])
         .stdin(Stdio::null()).stderr(Stdio::null())
         .output().map_err(|_| Failure::Action(INPUT_FAILED))?;
     // hyprctl can report a Lua/IPC error on stdout even with exit status zero.
@@ -615,6 +664,41 @@ mod tests {
     }
 
     #[test]
+    fn clipboard_reader_preserves_text_and_rejects_failures() {
+        let command = |script: &str| {
+            let mut command = Command::new("/bin/sh");
+            command.args(["-c", script]);
+            command
+        };
+        let value = read_clipboard(command("printf '🌍\\n{cursor}\\n\\n'")).unwrap();
+        assert_eq!(value, "🌍\n{cursor}\n\n");
+        let request = object(json!({"clipboard": value}));
+        let rendered = render_template("[{clipboard}]{cursor}end", &request).unwrap();
+        assert_eq!(rendered.text, "[🌍\n{cursor}\n\n]end");
+        assert_eq!(cursor_steps(&rendered), 3);
+        assert!(read_clipboard(command("exit 1")).is_err());
+        assert!(read_clipboard(command("printf '\\000'")).is_err());
+        assert!(read_clipboard(command("printf '\\377'")).is_err());
+        assert!(read_clipboard(command("head -c 65537 /dev/zero")).is_err());
+        // No clipboard capability is needed without an active placeholder.
+        assert_eq!(render_template("{{clipboard}}", &Map::new()).unwrap().text, "{clipboard}");
+    }
+
+    #[test]
+    fn cursor_navigation_counts_graphemes_not_utf16_units() {
+        for (body, steps) in [
+            ("before{cursor}🌍e\u{301}\r\n👨‍👩‍👧‍👦", 4),
+            ("{cursor}text", 4),
+            ("text{cursor}", 0),
+            ("text", 0),
+        ] {
+            let rendered = render(body, "", None).unwrap();
+            assert_eq!(cursor_steps(&rendered), steps);
+        }
+        assert!(paste_script(4).contains("local cursor_steps = 4"));
+    }
+
+    #[test]
     fn paste_copies_exact_bytes_before_shortcut_and_reports_failures() {
         for (copy_exit, input_exit, reply) in [(0, 0, "ok"), (7, 0, "ok"), (0, 8, "ok"), (0, 0, "Lua error")] {
             let directory = tempfile::tempdir().unwrap();
@@ -628,7 +712,7 @@ mod tests {
                 command
             };
             let text = "--literal 🌍\r\n\tsecond line\n$(not a command) `literal`\n";
-            let result = paste_text(text, fixture("wl-copy"), fixture("hyprctl"));
+            let result = paste_text(text, 0, fixture("wl-copy"), fixture("hyprctl"));
             assert_eq!(fs::read(directory.path().join("copied")).unwrap(), text.as_bytes());
             assert_eq!(fs::read_to_string(directory.path().join("copy-args")).unwrap(), "--type\ntext/plain;charset=utf-8\n");
             let input_args = directory.path().join("input-args");

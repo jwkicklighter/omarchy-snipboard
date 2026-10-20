@@ -173,7 +173,7 @@ fn clipboard_callback_ignores_sensitive_empty_binary_and_oversized_selections() 
 fn paste_protocol_renders_templates_and_sends_one_paste_gesture() {
     let directory = data();
     let commands = tempfile::tempdir().unwrap();
-    for name in ["wl-copy", "hyprctl"] {
+    for name in ["wl-copy", "wl-paste", "hyprctl"] {
         let path = commands.path().join(name);
         fs::copy(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name), &path).unwrap();
         fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
@@ -189,10 +189,24 @@ fn paste_protocol_renders_templates_and_sends_one_paste_gesture() {
     let saved = worker.request(json!({"op": "snippet-save", "revision": state["revision"], "fields": {
         "name": "Paste fixture", "body": "🌍\r\n{clipboard}{cursor}\n", "notes": "", "keyword": ""
     }}));
-    let response = worker.request(json!({"op": "paste", "seq": 42, "record": saved["record"], "clipboard": "literal {date}"}));
+    // No explicit clipboard field: exercise the same path used by the picker.
+    fs::write(commands.path().join("selection"), "literal {date}\n\n").unwrap();
+    let response = worker.request(json!({"op": "paste", "seq": 42, "record": saved["record"]}));
     assert_eq!(response, json!({"op": "paste", "seq": 42, "ok": true, "record": saved["record"]}));
-    assert_eq!(fs::read_to_string(commands.path().join("copied")).unwrap(), "🌍\r\nliteral {date}\n");
-    assert_eq!(fs::read_to_string(commands.path().join("input-args")).unwrap(), format!("eval\n{}\n", include_str!("../src/paste.lua")));
+    assert_eq!(fs::read_to_string(commands.path().join("copied")).unwrap(), "🌍\r\nliteral {date}\n\n\n");
+    assert_eq!(fs::read_to_string(commands.path().join("paste-args")).unwrap(), "--no-newline\n--type\ntext\n");
+    assert_eq!(fs::read_to_string(commands.path().join("input-args")).unwrap(),
+        format!("eval\n{}\n", include_str!("../src/paste.lua").replace("local cursor_steps = 0", "local cursor_steps = 1")));
+    // A failed read must leave the clipboard alone and send no new input.
+    fs::remove_file(commands.path().join("selection")).unwrap();
+    fs::remove_file(commands.path().join("copied")).unwrap();
+    fs::remove_file(commands.path().join("input-args")).unwrap();
+    for op in ["copy", "paste"] {
+        let failed = worker.request(json!({"op": op, "record": saved["record"]}));
+        assert!(failed["error"].as_str().unwrap().starts_with("Could not read clipboard"));
+        assert!(!commands.path().join("copied").exists());
+        assert!(!commands.path().join("input-args").exists());
+    }
     assert!(worker.request(json!({"op": "paste", "record": "missing"})).get("error").is_some());
     worker.shutdown();
 }
