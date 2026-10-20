@@ -1,5 +1,7 @@
 # Development workflow
 
+Use Conventional Commit messages for all commits, with a semantic type prefix such as `feat:`, `fix:`, `docs:`, `refactor:`, or `chore:`.
+
 Whenever you finish a fix or feature:
 
 1. Run the relevant tests.
