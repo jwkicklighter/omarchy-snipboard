@@ -112,8 +112,9 @@ For this owner's live development checkout, use the source-preserving
 ## Releases and marketplace
 
 GitHub Actions builds/tests every push and pull request, and checks the latest
-stable Rust weekly alongside the minimum supported Rust. Pushing a matching
-`vX.Y.Z` tag publishes a tested bundle and SHA-256 checksum to GitHub Releases.
+stable Rust weekly alongside the minimum supported Rust. Release Please maintains
+a release PR from Conventional Commits; merging it automatically tags, builds,
+and publishes a tested bundle and SHA-256 checksum to GitHub Releases.
 Optional automation opens an exact-commit marketplace update request after a
 release; **marketplace maintainers still must approve publication**.
 See [release and marketplace setup](docs/releases.md) for the initial submission,

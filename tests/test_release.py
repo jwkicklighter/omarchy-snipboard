@@ -22,6 +22,19 @@ marketplace = load_tool("marketplace")
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_release_please_configuration(self):
+        config = json.loads((ROOT / "release-please-config.json").read_text())
+        self.assertEqual(config["release-type"], "rust")
+        self.assertFalse(config["include-component-in-tag"])
+        self.assertTrue(config["draft"])
+        self.assertTrue(config["force-tag-creation"])
+        self.assertEqual(config["packages"]["."]["extra-files"], [
+            {"type": "json", "path": "manifest.json", "jsonpath": "$.version"},
+        ])
+        # This is the last released version, not necessarily the pending version.
+        manifest = json.loads((ROOT / ".release-please-manifest.json").read_text())
+        self.assertRegex(manifest["."], r"^\d+\.\d+\.\d+$")
+
     def test_versions_match(self):
         version = package.check_versions()
         self.assertEqual(version, package.check_versions(tag=f"v{version}"))

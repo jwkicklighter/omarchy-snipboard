@@ -8,9 +8,12 @@
   the manifest using a pinned upstream Omarchy Quattro validator; packages and
   starts the worker from an extracted release bundle. CI never activates a real
   desktop plugin. Full Omarchy QML lint and live compositor tests remain local.
-- `.github/workflows/release.yml`: `v*` tags run the same checks before publishing
-  the Linux x86_64 bundle and checksum. The tag must match all three package
-  versions. No release is created if tests, packaging, or version checks fail.
+- `.github/workflows/release.yml`: pushes to `master` run Release Please, which
+  maintains a release PR from Conventional Commits and enables squash auto-merge.
+  The PR updates `Cargo.toml`, `Cargo.lock`, `manifest.json`, the release manifest,
+  and changelog. Merging it creates a tag and draft release, runs the same CI at
+  that exact tag, then uploads the Linux x86_64 bundle and checksum and publishes.
+  Failed tests, packaging, or version checks leave the release unpublished.
 - An opt-in release job opens a marketplace **update request**, not an approval.
   `.github/workflows/marketplace.yml` can retry that step for an existing release.
   Existing requests for the same commit are reused, including closed ones; edit
@@ -78,28 +81,42 @@ GitHub release publication remains successful and the marketplace job is
 independently retryable. Disable update requests by setting the variable to
 `false` or removing it.
 
+## Enable release automation (one-time)
+
+Like `herdr-prompt-library`, this workflow requires an Actions secret named
+`RELEASE_PLEASE_TOKEN`: a dedicated credential with repository contents and pull
+request read/write permissions. It must be able to create PRs, tags, and draft
+releases and enable auto-merge. Using a separate token rather than `GITHUB_TOKEN`
+allows release PRs and merges to trigger CI and subsequent release runs. Configure
+it through GitHub Settings or `gh secret set RELEASE_PLEASE_TOKEN`; do not copy a
+local login credential into CI.
+
+Enable **Allow auto-merge** and squash merging in repository settings. Configure
+branch protection/rulesets on `master` to require the CI checks before merging;
+without required checks GitHub may merge the release PR immediately. Ensure token
+permissions and repository rules allow the release bot's PRs and merges.
+
+`release-please-config.json` uses the Rust release strategy to update Cargo
+metadata and an extra JSON updater for the plugin manifest. The initial
+`.release-please-manifest.json` baseline is `0.1.0`.
+
 ## Publish a version
 
-1. Update `manifest.json` and `Cargo.toml` to the same `X.Y.Z` and regenerate
-   `Cargo.lock` (`cargo check`). Do not reuse a released version or move tags.
+1. Use Conventional Commits (`feat:`, `fix:`, etc.) and push changes to `master`.
+   Release Please calculates the next version and maintains the release PR;
+   do not manually bump package versions or create release tags.
 2. Run `make build test validate package` on Omarchy. Review runtime compatibility
    separately; successful offscreen CI does not prove all external apps work.
-3. Commit with a Conventional Commit message and push `master`.
-4. Tag the **current default-branch HEAD** and push:
-
-   ```sh
-   git tag -a v0.1.0 -m 'Snipboard v0.1.0'
-   git push origin v0.1.0
-   ```
-
-   Substitute the new version. GitHub Actions publishes the tested artifact; no
-   manually built binary is uploaded. Tag rules/protection may be enabled by the
-   owner in GitHub Settings to restrict who can create release tags.
-5. If opted in, the workflow opens `[Verify]: Snipboard vX.Y.Z` with the exact
+3. Review the release PR's version and changelog. Auto-merge completes once the
+   repository's required checks/reviews pass. The subsequent `master` push creates
+   the tagged draft, builds and tests it, uploads assets, then publishes it.
+   If checks or upload fail, rerun the failed jobs in that original workflow run;
+   the draft stays unpublished until publication succeeds. Do not move tags.
+4. If opted in, the workflow opens `[Verify]: Snipboard vX.Y.Z` with the exact
    release SHA. It refuses stale tags, draft releases, and prereleases. Marketplace
    updates require current upstream HEAD, so avoid advancing `master` while the
    request is under review; otherwise prepare a newer release/request.
-6. A marketplace maintainer reviews the exact commit and approves promotion.
+5. A marketplace maintainer reviews the exact commit and approves promotion.
    There is no supported API to bypass this step or automatically approve it.
 
 Retry an update request with Actions → **Retry marketplace update**, entering the
