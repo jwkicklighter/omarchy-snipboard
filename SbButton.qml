@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import qs.Commons
+import qs.Commons as Commons
 
 Button {
     id: control
@@ -12,7 +13,7 @@ Button {
     property bool primary: false
     // Tooltip, and the accessible name for glyph-only buttons.
     property string hint: ""
-    readonly property color tone: danger ? Color.urgent : Color.accent
+    readonly property color tone: danger ? Commons.Color.urgent : Commons.Color.accent
     readonly property bool lit: checked || down || primary
     font.family: Style.font.menuFamily
     font.pixelSize: Style.font.body
@@ -45,13 +46,13 @@ Button {
             text: control.text
             textFormat: Text.PlainText
             font: control.font
-            color: control.danger ? Color.urgent : control.lit ? Color.menu.selectedText : Color.menu.text
+            color: control.danger ? Commons.Color.urgent : control.lit ? Commons.Color.menu.selectedText : Commons.Color.menu.text
         }
     }
     background: Rectangle {
         radius: Style.cornerRadius
-        color: control.lit ? Color.menu.selectedBackground : Style.controlFill(control.visualFocus, control.hovered, Color.menu.text, control.tone)
-        border.color: control.lit ? control.tone : Style.controlBorder(control.visualFocus, control.hovered, control.danger ? Color.urgent : Color.menu.text, control.tone)
+        color: control.lit ? Commons.Color.menu.selectedBackground : Style.controlFill(control.visualFocus, control.hovered, Commons.Color.menu.text, control.tone)
+        border.color: control.lit ? control.tone : Style.controlBorder(control.visualFocus, control.hovered, control.danger ? Commons.Color.urgent : Commons.Color.menu.text, control.tone)
         border.width: control.lit ? 1 : Style.controlBorderWidth(control.visualFocus, control.hovered)
     }
 }

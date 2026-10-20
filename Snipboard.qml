@@ -8,6 +8,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Hyprland
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 
 Item {
@@ -323,7 +324,10 @@ Item {
                                openToFrameSwappedMs: openFrameLatency, physicalPresentationMeasured: false,
                                 rows: rows.length, ready: ready, searchFocused: search.activeFocus,
                                  clipboardCaptureVersion: 1, clipboardWatcherRunning: clipboardWatcher.running,
-                                 historyDeleteVersion: 1, historyDeletePending: pendingHistoryDelete !== 0,
+                                  historyDeleteVersion: 1, historyDeletePending: pendingHistoryDelete !== 0,
+                                  overlayWindowVersion: 1, windowVisible: panel.visible,
+                                  windowWidth: panel.width, windowHeight: panel.height,
+                                  surfaceColor: panel.color.toString(), cardWidth: card.width, cardHeight: card.height,
                                benchmarkRunning: benchmarkRunning, testPhase: testPhase, tests: testResults,
                                layoutResets: layoutResets, layoutProbeResult: layoutProbeResult})
     }
@@ -541,7 +545,7 @@ Item {
     }
 
     component Caption: Text {
-        color: Color.muted
+        color: Commons.Color.muted
         font.family: Style.font.menuFamily
         font.pixelSize: Style.font.caption
         textFormat: Text.PlainText
@@ -551,29 +555,31 @@ Item {
     component Divider: Rectangle {
         implicitWidth: Style.normalBorderWidth
         implicitHeight: Style.normalBorderWidth
-        color: Util.alpha(Color.menu.border, 0.28)
+        color: Util.alpha(Commons.Color.menu.border, 0.28)
     }
 
     component Scrollbar: ScrollBar {
         id: bar
-        contentItem: Rectangle { implicitWidth: Style.space(4); radius: width / 2; color: Color.menu.text; opacity: bar.active ? 0.5 : 0.2 }
+        contentItem: Rectangle { implicitWidth: Style.space(4); radius: width / 2; color: Commons.Color.menu.text; opacity: bar.active ? 0.5 : 0.2 }
         background: Item {}
     }
 
     component Input: TextField {
-        color: Color.menu.text
-        placeholderTextColor: Color.muted
+        color: Commons.Color.menu.text
+        placeholderTextColor: Commons.Color.muted
         selectionColor: Style.selectionFill
-        selectedTextColor: Color.menu.selectedText
+        selectedTextColor: Commons.Color.menu.selectedText
         font.family: Style.font.menuFamily
         font.pixelSize: Style.font.body
         leftPadding: Style.space(10)
         rightPadding: Style.space(10)
         topPadding: Style.space(7)
         bottomPadding: Style.space(7)
-        background: Rectangle { color: Style.normalFill; border.color: parent.activeFocus ? Color.accent : Color.menu.border; border.width: 1; radius: Style.cornerRadius }
+        background: Rectangle { color: Style.normalFill; border.color: parent.activeFocus ? Commons.Color.accent : Commons.Color.menu.border; border.width: 1; radius: Style.cornerRadius }
     }
 
+    // A transparent shell overlay, not a tiled desktop window. Only the card
+    // paints a background; never add a full-screen scrim here.
     PanelWindow {
         id: panel
         visible: root.opened
@@ -584,7 +590,6 @@ Item {
         WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
 
-        Rectangle { anchors.fill: parent; color: Color.menu.scrim }
         MouseArea { anchors.fill: parent; onClicked: root.close() }
 
         BorderSurface {
@@ -593,9 +598,10 @@ Item {
             width: Math.min(Style.space(900), panel.width - Style.gapsOut * 2)
             height: Math.min(Style.space(600), panel.height - Style.gapsOut * 2)
             radius: Style.cornerRadius
-            color: Color.menu.background
-            borderSpec: Border.surfaceSpec("menu", "border", Color.menu.border, Math.max(1, Style.space(2)))
+            color: Commons.Color.menu.background
+            borderSpec: Border.surfaceSpec("menu", "border", Commons.Color.menu.border, Math.max(1, Style.space(2)))
             padding: Style.spacing.panelPadding
+            Keys.onEscapePressed: function(event) { root.close(); event.accepted = true }
             MouseArea { anchors.fill: parent }
 
             ColumnLayout {
@@ -610,16 +616,22 @@ Item {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: Style.space(8)
-                    Text { text: "󰅍"; color: Color.accent; font.family: Style.font.menuFamily; font.pixelSize: Style.font.iconLarge }
-                    Text { text: "Snipboard"; color: Color.menu.text; font.family: Style.font.menuFamily; font.pixelSize: Style.font.title; font.bold: true }
+                    Text { text: "󰅍"; color: Commons.Color.accent; font.family: Style.font.menuFamily; font.pixelSize: Style.font.iconLarge }
+                    Text {
+                        text: "Snipboard"
+                        color: Commons.Color.menu.text
+                        font.family: Style.font.menuFamily
+                        font.pixelSize: Style.font.title
+                        font.bold: true
+                    }
                     Rectangle {
                         implicitWidth: badge.implicitWidth + Style.space(12)
                         implicitHeight: badge.implicitHeight + Style.space(4)
                         radius: height / 2
                         color: "transparent"
-                        border.color: Util.alpha(Color.accent, 0.6)
+                        border.color: Util.alpha(Commons.Color.accent, 0.6)
                         border.width: 1
-                        Caption { id: badge; anchors.centerIn: parent; text: "prototype"; color: Color.accent }
+                        Caption { id: badge; anchors.centerIn: parent; text: "prototype"; color: Commons.Color.accent }
                     }
                     Item { Layout.fillWidth: true }
                     SbButton {
@@ -643,7 +655,7 @@ Item {
                         anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
                         text: "󰍉"
-                        color: search.activeFocus ? Color.accent : Color.muted
+                        color: search.activeFocus ? Commons.Color.accent : Commons.Color.muted
                         font.family: Style.font.menuFamily
                         font.pixelSize: Style.font.heading
                     }
@@ -654,10 +666,10 @@ Item {
                         anchors.right: parent.right
                         placeholderText: "Search clipboard and snippets…"
                         maximumLength: 256
-                        color: Color.menu.text
-                        placeholderTextColor: Color.muted
+                        color: Commons.Color.menu.text
+                        placeholderTextColor: Commons.Color.muted
                         selectionColor: Style.selectionFill
-                        selectedTextColor: Color.menu.selectedText
+                        selectedTextColor: Commons.Color.menu.selectedText
                         font.family: Style.font.menuFamily
                         font.pixelSize: Style.font.heading
                         leftPadding: 0
@@ -693,7 +705,7 @@ Item {
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
                         height: search.activeFocus ? Math.max(1, Style.space(2)) : Style.normalBorderWidth
-                        color: search.activeFocus ? Color.accent : Util.alpha(Color.menu.border, 0.28)
+                        color: search.activeFocus ? Commons.Color.accent : Util.alpha(Commons.Color.menu.border, 0.28)
                     }
                 }
 
@@ -772,8 +784,8 @@ Item {
                             width: results.width
                             height: Math.max(Style.space(50), Style.font.body + Style.font.caption + Style.space(26))
                             radius: Style.cornerRadius
-                            color: current ? Color.menu.selectedBackground : "transparent"
-                            border.color: current ? Color.menu.selectedBorder : "transparent"
+                            color: current ? Commons.Color.menu.selectedBackground : "transparent"
+                            border.color: current ? Commons.Color.menu.selectedBorder : "transparent"
                             border.width: current ? Style.selectedBorderWidth : 0
                             RowLayout {
                                 anchors.fill: parent
@@ -784,15 +796,15 @@ Item {
                                     Layout.preferredWidth: Style.font.iconLarge + Style.space(4)
                                     horizontalAlignment: Text.AlignHCenter
                                     text: row.kind === "snippet" ? "󰅩" : "󰅌"
-                                    color: row.current ? Color.menu.selectedText : Color.muted
+                                    color: row.current ? Commons.Color.menu.selectedText : Commons.Color.muted
                                     font.family: Style.font.menuFamily
                                     font.pixelSize: Style.font.iconLarge
                                 }
                                 ColumnLayout {
                                     Layout.fillWidth: true
                                     spacing: Style.space(2)
-                                    Text { Layout.fillWidth: true; text: row.name; textFormat: Text.PlainText; color: row.current ? Color.menu.selectedText : Color.menu.text; font.family: Style.font.menuFamily; font.pixelSize: Style.font.title; elide: Text.ElideRight }
-                                    Text { Layout.fillWidth: true; text: row.summary; textFormat: Text.PlainText; color: Color.menu.text; opacity: 0.55; font.family: Style.font.menuFamily; font.pixelSize: Style.font.caption; elide: Text.ElideRight }
+                                    Text { Layout.fillWidth: true; text: row.name; textFormat: Text.PlainText; color: row.current ? Commons.Color.menu.selectedText : Commons.Color.menu.text; font.family: Style.font.menuFamily; font.pixelSize: Style.font.title; elide: Text.ElideRight }
+                                    Text { Layout.fillWidth: true; text: row.summary; textFormat: Text.PlainText; color: Commons.Color.menu.text; opacity: 0.55; font.family: Style.font.menuFamily; font.pixelSize: Style.font.caption; elide: Text.ElideRight }
                                 }
                             }
                             MouseArea {
@@ -812,7 +824,7 @@ Item {
                                 width: parent.width
                                 horizontalAlignment: Text.AlignHCenter
                                 text: root.ready ? "󰅌" : "󰔟"
-                                color: Color.menu.selectedText
+                                color: Commons.Color.menu.selectedText
                                 opacity: 0.8
                                 font.family: Style.font.menuFamily
                                 font.pixelSize: Style.font.displayLarge
@@ -823,7 +835,7 @@ Item {
                                 text: !root.ready ? "Loading…" : search.text.length ? "No matches for “" + search.text + "”" : "Nothing here yet"
                                 textFormat: Text.PlainText
                                 elide: Text.ElideMiddle
-                                color: Color.menu.text
+                                color: Commons.Color.menu.text
                                 opacity: 0.7
                                 font.family: Style.font.menuFamily
                                 font.pixelSize: Style.font.title
@@ -853,7 +865,7 @@ Item {
                             Layout.fillHeight: true
                             clip: true
                             ScrollBar.vertical: Scrollbar {}
-                            TextArea { text: root.preview; readOnly: true; textFormat: TextEdit.PlainText; wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere; color: Color.menu.text; selectionColor: Style.selectionFill; selectedTextColor: Color.menu.selectedText; font.family: Style.font.menuFamily; font.pixelSize: Style.font.title; leftPadding: 0; rightPadding: Style.space(8); topPadding: 0; background: Item {} }
+                            TextArea { text: root.preview; readOnly: true; textFormat: TextEdit.PlainText; wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere; color: Commons.Color.menu.text; selectionColor: Style.selectionFill; selectedTextColor: Commons.Color.menu.selectedText; font.family: Style.font.menuFamily; font.pixelSize: Style.font.title; leftPadding: 0; rightPadding: Style.space(8); topPadding: 0; background: Item {} }
                         }
                         Input {
                             id: clipboardInput
@@ -882,14 +894,14 @@ Item {
                                 placeholderText: "Enable expansion, then type !email, !unicode, !multi, or !vars."
                                 textFormat: TextEdit.PlainText
                                 wrapMode: TextEdit.WrapAnywhere
-                                color: Color.menu.text
-                                placeholderTextColor: Color.muted
+                                color: Commons.Color.menu.text
+                                placeholderTextColor: Commons.Color.muted
                                 selectionColor: Style.selectionFill
-                                selectedTextColor: Color.menu.selectedText
+                                selectedTextColor: Commons.Color.menu.selectedText
                                 font.family: Style.font.menuFamily
                                 font.pixelSize: Style.font.body
                                 padding: Style.space(10)
-                                background: Rectangle { color: Style.normalFill; border.color: scratch.activeFocus ? Color.accent : Color.menu.border; border.width: 1; radius: Style.cornerRadius }
+                                background: Rectangle { color: Style.normalFill; border.color: scratch.activeFocus ? Commons.Color.accent : Commons.Color.menu.border; border.width: 1; radius: Style.cornerRadius }
                                 onActiveFocusChanged: root.resetScratch()
                                 onCursorPositionChanged: root.scratchRevision++
                                 onSelectionStartChanged: root.scratchRevision++

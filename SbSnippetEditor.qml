@@ -3,6 +3,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import qs.Commons
+import qs.Commons as Commons
 
 ColumnLayout {
     id: editor
@@ -84,10 +85,10 @@ ColumnLayout {
 
     component Field: TextField {
         Layout.fillWidth: true
-        color: Color.menu.text
-        placeholderTextColor: Color.muted
+        color: Commons.Color.menu.text
+        placeholderTextColor: Commons.Color.muted
         selectionColor: Style.selectionFill
-        selectedTextColor: Color.menu.selectedText
+        selectedTextColor: Commons.Color.menu.selectedText
         font.family: Style.font.menuFamily
         font.pixelSize: Style.font.body
         leftPadding: Style.space(10)
@@ -96,7 +97,7 @@ ColumnLayout {
         bottomPadding: Style.space(7)
         background: Rectangle {
             color: Style.normalFill
-            border.color: parent.activeFocus ? Color.accent : Color.menu.border
+            border.color: parent.activeFocus ? Commons.Color.accent : Commons.Color.menu.border
             border.width: 1
             radius: Style.cornerRadius
         }
@@ -105,30 +106,30 @@ ColumnLayout {
     component Area: TextArea {
         textFormat: TextEdit.PlainText
         wrapMode: TextEdit.WrapAnywhere
-        color: Color.menu.text
-        placeholderTextColor: Color.muted
+        color: Commons.Color.menu.text
+        placeholderTextColor: Commons.Color.muted
         selectionColor: Style.selectionFill
-        selectedTextColor: Color.menu.selectedText
+        selectedTextColor: Commons.Color.menu.selectedText
         font.family: Style.font.menuFamily
         font.pixelSize: Style.font.body
         padding: Style.space(10)
         background: Rectangle {
             color: Style.normalFill
-            border.color: parent.activeFocus ? Color.accent : Color.menu.border
+            border.color: parent.activeFocus ? Commons.Color.accent : Commons.Color.menu.border
             border.width: 1
             radius: Style.cornerRadius
         }
     }
 
     component Label: Text {
-        color: Color.menu.text
+        color: Commons.Color.menu.text
         font.family: Style.font.menuFamily
         font.pixelSize: Style.font.caption
         textFormat: Text.PlainText
     }
 
     component Hint: Label {
-        color: Color.muted
+        color: Commons.Color.muted
         elide: Text.ElideRight
     }
 
@@ -139,8 +140,8 @@ ColumnLayout {
         Layout.fillWidth: true
         implicitHeight: bannerRow.implicitHeight + Style.space(12)
         radius: Style.cornerRadius
-        color: Qt.rgba(urgent ? Color.urgent.r : Color.accent.r, urgent ? Color.urgent.g : Color.accent.g, urgent ? Color.urgent.b : Color.accent.b, 0.12)
-        border.color: urgent ? Color.urgent : Color.accent
+        color: Qt.rgba(urgent ? Commons.Color.urgent.r : Commons.Color.accent.r, urgent ? Commons.Color.urgent.g : Commons.Color.accent.g, urgent ? Commons.Color.urgent.b : Commons.Color.accent.b, 0.12)
+        border.color: urgent ? Commons.Color.urgent : Commons.Color.accent
         border.width: 1
         RowLayout {
             id: bannerRow
@@ -156,7 +157,7 @@ ColumnLayout {
         spacing: Style.space(8)
         Text {
             text: editor.original.id ? "Edit snippet" : "New snippet"
-            color: Color.menu.text
+            color: Commons.Color.menu.text
             font.family: Style.font.menuFamily
             font.pixelSize: Style.font.title
             font.bold: true
@@ -165,7 +166,7 @@ ColumnLayout {
             Layout.fillWidth: true
             text: editor.original.id ? "Identity and usage are preserved" : "Stored in the prototype library only"
         }
-        Hint { visible: editor.dirty; text: "● Unsaved"; color: Color.accent }
+        Hint { visible: editor.dirty; text: "● Unsaved"; color: Commons.Color.accent }
     }
 
     RowLayout {
@@ -220,7 +221,7 @@ ColumnLayout {
             Layout.topMargin: Style.space(6)
             Layout.bottomMargin: Style.space(6)
             wrapMode: Text.Wrap
-            color: Color.urgent
+            color: Commons.Color.urgent
             text: editor.error || "Library is read-only. Keep your draft; review storage and reload from the picker."
         }
     }

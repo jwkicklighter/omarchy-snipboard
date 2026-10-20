@@ -24,6 +24,13 @@ The script refuses existing destinations, merges, cross-filesystem copying, or r
 
 ## Build, tests, manifest, and QML lint
 
+The picker uses Quickshell's `PanelWindow` as a transparent layer-shell overlay,
+with a compact centered card and no full-screen scrim. It does not create a
+normal desktop window or require a Hyprland floating-window rule. Escape, the
+close button, and clicking outside use the same draft-preserving dismissal path.
+The temporary Snipboard floating rule from the earlier `FloatingWindow`
+implementation has been removed from this machine's Hyprland configuration.
+
 ```sh
 cd ~/Work/omarchy-snipboard
 cargo build --release

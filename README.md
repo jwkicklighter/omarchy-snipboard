@@ -2,6 +2,10 @@
 
 A native Omarchy shell prototype for finding and reusing clipboard text and snippets.
 
+Super+Shift+V opens a compact, centered picker on a transparent shell overlay,
+without painting over or dimming the surrounding desktop. Esc, the close button,
+or clicking outside dismisses it. No Hyprland floating-window rule is required.
+
 ## Status
 
 Working **text-history prototype**, not a first release. Native overlay, system clipboard text capture, combined fuzzy search, separate preview, snippet creation/editing/duplication/deletion, save-result-as-snippet, usage persistence, and opt-in disposable expansion scratchpad are implemented. The manifest validates; the original picker loaded in the installed shell. The new editor and clipboard watcher still need live-shell validation.

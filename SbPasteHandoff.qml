@@ -1,6 +1,6 @@
 import QtQuick
 
-// Let the layer surface unmap before asking the worker to send a paste shortcut.
+// Let the picker window unmap before asking the worker to send a paste shortcut.
 QtObject {
     id: root
     property var pending: null

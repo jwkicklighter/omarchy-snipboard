@@ -38,6 +38,14 @@ TestCase {
         compare(saves.signalArguments[0][0].name, "Renamed")
     }
 
+    function test_theme_colors_resolve_inside_controls() {
+        compare(field("snippetName").color.toString(), "#eeeeee")
+        compare(field("snippetBody").color.toString(), "#eeeeee")
+        field("snippetName").forceActiveFocus()
+        compare(field("snippetName").background.border.color.toString(), "#aaaaaa")
+        compare(field("discardDraft").tone.toString(), "#a55555")
+    }
+
     function test_line_endings_and_literal_markup() {
         const snippet = fixture()
         snippet.body = "<b>literal</b>\r\n\tline\r\nend \n"
