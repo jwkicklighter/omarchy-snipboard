@@ -322,7 +322,7 @@ impl Worker {
             }
             "preview" => {
                 let item = self.record(request)?;
-                Ok(object(json!({"body": item.body, "keyword": item.keyword})))
+                Ok(object(json!({"body": item.body, "keyword": item.keyword, "kind": item.kind.as_str(), "created": item.created})))
             }
             "scratch" => {
                 if request.get("enabled") != Some(&Value::Bool(true))

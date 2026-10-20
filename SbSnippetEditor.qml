@@ -86,7 +86,7 @@ ColumnLayout {
     component Field: TextField {
         Layout.fillWidth: true
         color: Commons.Color.menu.text
-        placeholderTextColor: Commons.Color.muted
+        placeholderTextColor: Qt.rgba(Commons.Color.menu.text.r, Commons.Color.menu.text.g, Commons.Color.menu.text.b, 0.38)
         selectionColor: Style.selectionFill
         selectedTextColor: Commons.Color.menu.selectedText
         font.family: Style.font.menuFamily
@@ -107,7 +107,7 @@ ColumnLayout {
         textFormat: TextEdit.PlainText
         wrapMode: TextEdit.WrapAnywhere
         color: Commons.Color.menu.text
-        placeholderTextColor: Commons.Color.muted
+        placeholderTextColor: Qt.rgba(Commons.Color.menu.text.r, Commons.Color.menu.text.g, Commons.Color.menu.text.b, 0.38)
         selectionColor: Style.selectionFill
         selectedTextColor: Commons.Color.menu.selectedText
         font.family: Style.font.menuFamily
@@ -129,7 +129,7 @@ ColumnLayout {
     }
 
     component Hint: Label {
-        color: Commons.Color.muted
+        color: Qt.rgba(Commons.Color.menu.text.r, Commons.Color.menu.text.g, Commons.Color.menu.text.b, 0.55)
         elide: Text.ElideRight
     }
 

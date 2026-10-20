@@ -26,8 +26,8 @@ The script refuses existing destinations, merges, cross-filesystem copying, or r
 
 The picker uses Quickshell's `PanelWindow` as a transparent layer-shell overlay,
 with a compact centered card and no full-screen scrim. It does not create a
-normal desktop window or require a Hyprland floating-window rule. Escape, the
-close button, and clicking outside use the same draft-preserving dismissal path.
+normal desktop window or require a Hyprland floating-window rule. Escape and
+clicking outside use the same draft-preserving dismissal path.
 The temporary Snipboard floating rule from the earlier `FloatingWindow`
 implementation has been removed from this machine's Hyprland configuration.
 
@@ -83,9 +83,13 @@ These hooks edit only the plugin's disposable TextEdit, using fixed synthetic fi
 
 Build before starting live probes; running the prebuilt `snipboard-tools` binary writes nothing inside the installation (diagnostics go to the temporary directory). After a shell restart, wait for `omarchy-shell shell ping` and plugin initialization before starting a probe; IPC availability alone need not imply plugin readiness.
 
-Manual workflow: open the overlay, choose **Scratch**, enable scratch expansion, then type `!email`, `!unicode`, `!multi`, or `!vars`. `{clipboard}` comes from the explicit field above it. **Insert selected into scratch** is distinct from the external-paste action. Search selection-copy stays ordinary; a dedicated **Copy only** button makes result copying explicit.
+Manual workflow: open the overlay, press Right (or Ctrl+K) for the action menu, choose **Toggle scratchpad**, enable scratch expansion, then type `!email`, `!unicode`, `!multi`, or `!vars`. `{clipboard}` comes from the explicit field above it. **Insert into scratchpad** is distinct from the external-paste action. Search selection-copy stays ordinary; the **Copy to clipboard** action (Ctrl+C with no search selection) makes result copying explicit.
 
-Snippet editing (after separately approved activation): choose **New**, or select a snippet and choose **Edit**. Save with the button or Ctrl+S/Super+S. Name, body/template, optional keyword, and notes stay in prototype `library.json`; nothing is imported from existing snippets. Escape/Cancel preserves a dirty draft until you explicitly discard it. Delete asks for confirmation. Validation/save failures retain the draft. **Reload library** explicitly adopts the current valid file, or retains the previous library read-only on failure; it is unavailable while the editor is open. External changes are detected at save/reload, not watched. This is local editing, not complete folder sync or conflict review.
+Picker keys: Up/Down/PageUp/PageDown select, Enter pastes, Ctrl+1–9 pastes by position among the visible rows, Tab/Shift+Tab cycles All/Clipboard/Snippets, and Right at the end of the query (or Ctrl+K, or right-click a row) opens the per-item action menu. In that menu, type to filter, Enter runs, and Left/Backspace on an empty filter, Escape, or Ctrl+K go back. Actions are defined in `SbActions.js` and tested by `tests/qml/tst_actions.qml`.
+
+Theme colors come from Omarchy's `[menu]` surface roles. Secondary text dims `menu.text` instead of using the palette's `muted` role, which is too dark to read on the card in some themes (Tokyo Night `#414868` on `#1a1b26`). `metrics` reports the resolved colors under `colors`.
+
+Snippet editing (after separately approved activation): use the **New snippet** or **Edit snippet** action (Ctrl+N / Ctrl+E). Save with the button or Ctrl+S/Super+S. Name, body/template, optional keyword, and notes stay in prototype `library.json`; nothing is imported from existing snippets. Escape/Cancel preserves a dirty draft until you explicitly discard it. Delete asks for confirmation. Validation/save failures retain the draft. **Reload snippet library** explicitly adopts the current valid file, or retains the previous library read-only on failure; it is unavailable while the editor is open. External changes are detected at save/reload, not watched. This is local editing, not complete folder sync or conflict review.
 
 ## Disable and remove without deleting source or data
 

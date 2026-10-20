@@ -3,8 +3,14 @@
 A native Omarchy shell prototype for finding and reusing clipboard text and snippets.
 
 Super+Shift+V opens a compact, centered picker on a transparent shell overlay,
-without painting over or dimming the surrounding desktop. Esc, the close button,
-or clicking outside dismisses it. No Hyprland floating-window rule is required.
+without painting over or dimming the surrounding desktop. Esc or clicking outside dismisses it. No Hyprland floating-window rule is required.
+
+The picker is a single search line over a result list, with a preview of the
+selection on the right showing word/character counts and when it was copied.
+Enter pastes, Ctrl+1–9 pastes by position, and Tab cycles the source filter.
+Right arrow (or Ctrl+K) opens the actions for the selected item: copy, save
+as snippet, edit/duplicate, insert into scratchpad, delete from history, and
+more. Colors follow the active Omarchy theme's menu roles.
 
 ## Status
 

@@ -10,6 +10,7 @@ import Quickshell.Hyprland
 import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
+import "SbActions.js" as SbActions
 
 Item {
     id: root
@@ -27,6 +28,16 @@ Item {
     property var rows: []
     property int selected: 0
     property string preview: ""
+    property string previewKeyword: ""
+    property real previewCreated: 0
+    property string shownQuery: ""
+    property string runningQuery: ""
+    // Right arrow / Ctrl+K: actions for the row that was selected when opened.
+    property bool actionsOpen: false
+    property var actionTarget: null
+    property string actionQuery: ""
+    property int actionSelected: 0
+    readonly property var actionRows: SbActions.filter(SbActions.forRow(actionTarget), actionQuery)
     property bool editorVisible: false
     property int pendingEditor: 0
     property int pendingMutation: 0
@@ -62,6 +73,15 @@ Item {
     property string layoutProbeResult: "not run"
     readonly property string sourceDirectory: decodeURIComponent(Qt.resolvedUrl(".").toString().replace(/^file:\/\//, "").replace(/\/$/, ""))
     readonly property var activeRow: rows.length > selected ? rows[selected] : null
+    // The preview follows the action target while the action menu is open.
+    readonly property var previewSubject: actionsOpen ? actionTarget : activeRow
+    // Secondary text dims the menu foreground, as Omarchy's own menu does.
+    // The theme's `muted` role is often too dark to read on the card.
+    readonly property color textColor: Commons.Color.menu.text
+    readonly property color dimText: Util.alpha(Commons.Color.menu.text, 0.55)
+    readonly property color faintText: Util.alpha(Commons.Color.menu.text, 0.38)
+    readonly property color hairline: Util.alpha(Commons.Color.menu.text, 0.12)
+    readonly property color keyFill: Util.alpha(Commons.Color.menu.text, 0.08)
 
     function send(operation, fields) {
         if (!ready) return 0
@@ -77,9 +97,11 @@ Item {
         if (editorVisible) { opened = true; return } // A repeated summon must not erase a draft.
         openedAt = Date.now()
         opened = true
+        actionsOpen = false
         expansionEnabled = false
         scratchVisible = false
         resetScratch()
+        shownQuery = "" // Every summon starts at the top of the list.
         search.text = ""
         kind = "all"
         requestSearch()
@@ -89,6 +111,7 @@ Item {
     function close() {
         if (editorVisible) { snippetEditor.dismiss(true); return }
         opened = false
+        actionsOpen = false
         pendingEditor = 0
         expansionEnabled = false
         resetScratch()
@@ -105,6 +128,7 @@ Item {
     function startSearch() {
         if (!ready) return
         runningSearch = wantedSearch
+        runningQuery = kind + "\n" + search.text
         helper.write(JSON.stringify({op: "search", seq: runningSearch, query: search.text, kind: kind}) + "\n")
     }
 
@@ -115,17 +139,88 @@ Item {
     }
 
     function loadPreview() {
-        if (activeRow && activeRow.id === previewRecord) return
+        if (previewSubject && previewSubject.id === previewRecord) return
         previewTimer.restart()
     }
 
-    function copyOnly() {
-        if (activeRow) send("copy", {record: activeRow.id, clipboard: clipboardInput.text})
+    function copyOnly(row) {
+        row = row || activeRow
+        if (row) send("copy", {record: row.id, clipboard: clipboardInput.text})
     }
 
-    function deleteHistory() {
-        if (!ready || !opened || editorVisible || pendingHistoryDelete || pendingPaste || !activeRow || activeRow.kind !== "clipboard") return
-        pendingHistoryDelete = send("clipboard-delete", {record: activeRow.id})
+    function deleteHistory(row) {
+        row = row || activeRow
+        if (!ready || !opened || editorVisible || pendingHistoryDelete || pendingPaste || !row || row.kind !== "clipboard") return
+        pendingHistoryDelete = send("clipboard-delete", {record: row.id})
+    }
+
+    function reloadLibrary() {
+        if (!ready || pendingEditor || pendingReload) return
+        expansionEnabled = false
+        resetScratch()
+        pendingRender = null
+        pendingReload = send("library-reload", {})
+    }
+
+    function cycleKind(delta) {
+        const kinds = ["all", "clipboard", "snippet"]
+        kind = kinds[(kinds.indexOf(kind) + delta + kinds.length) % kinds.length]
+        requestSearch()
+    }
+
+    // Ctrl+1–9 pastes by position within the visible rows, like Alfred.
+    function quickPaste(position) {
+        const index = results.firstVisible + position - 1
+        if (index < 0 || index >= rows.length) return
+        selected = index
+        paste()
+    }
+
+    function openActions() {
+        if (!ready || !opened || editorVisible || actionsOpen) return
+        actionTarget = activeRow
+        actionQuery = ""
+        actionSearch.text = ""
+        actionSelected = 0
+        actionsOpen = true
+        actionSearch.forceActiveFocus()
+    }
+
+    function closeActions() {
+        if (!actionsOpen) return
+        actionsOpen = false
+        actionTarget = null
+        actionSearch.text = ""
+        loadPreview()
+        if (opened && !editorVisible) search.forceActiveFocus()
+    }
+
+    function selectAction(delta) {
+        if (!actionRows.length) return
+        actionSelected = (actionSelected + delta + actionRows.length) % actionRows.length
+        actionList.positionViewAtIndex(actionSelected, ListView.Contain)
+    }
+
+    function runAction(action) {
+        if (!action) return
+        const target = actionTarget
+        closeActions()
+        if (action.id === "paste") paste(target)
+        else if (action.id === "copy") copyOnly(target)
+        else if (action.id === "edit" && target) editSnippet(target.id)
+        else if (action.id === "duplicate" && target) editSnippet(target.id, true)
+        else if (action.id === "scratch") { scratchVisible = true; insertScratch(target) }
+        else if (action.id === "delete") deleteHistory(target)
+        else if (action.id === "new") editSnippet("")
+        else if (action.id === "toggle-scratch") { scratchVisible = !scratchVisible; resetScratch() }
+        else if (action.id === "reload") reloadLibrary()
+    }
+
+    function rowGlyph(kind, text) {
+        if (kind === "snippet") return "󰅩"
+        if (/^https?:\/\//.test(text)) return "󰌷"
+        if (/^(\/|~\/)\S*$/.test(text)) return "󰈔"
+        return "󰅌"
     }
 
     function editSnippet(record, draft) {
@@ -143,9 +238,10 @@ Item {
         pendingMutation = send(operation, {record: snippetEditor.original.id, revision: snippetEditor.revision, fields: fields})
     }
 
-    function paste() {
-        if (!ready || !opened || !activeRow || editorVisible || pendingPaste) return
-        pasteHandoff.start(activeRow.id, clipboardInput.text)
+    function paste(row) {
+        row = row || activeRow
+        if (!ready || !opened || !row || editorVisible || pendingPaste) return
+        pasteHandoff.start(row.id, clipboardInput.text)
     }
 
     function resetScratch() {
@@ -166,17 +262,18 @@ Item {
         pendingScratch = {seq: seq, revision: revision, position: position, floor: start}
     }
 
-    function insertScratch() {
-        if (!activeRow) return
+    function insertScratch(row) {
+        row = row || activeRow
+        if (!row) return
         resetScratch()
-        const seq = send("render", {record: activeRow.id, clipboard: clipboardInput.text})
-        pendingRender = {seq: seq, record: activeRow.id, revision: scratchRevision}
+        const seq = send("render", {record: row.id, clipboard: clipboardInput.text})
+        pendingRender = {seq: seq, record: row.id, revision: scratchRevision}
     }
 
     function receive(message) {
         if (message.op === "ready") {
             ready = true
-            status = message.count + " records · recording clipboard text · Enter to paste"
+            status = message.count + " records · recording clipboard text"
             clipboardWatcher.running = true
             requestSearch()
             return
@@ -256,6 +353,9 @@ Item {
         if (message.op === "search") {
             runningSearch = 0
             if (message.seq === wantedSearch) {
+                // A clipboard capture re-runs the same query; keep the cursor on its row.
+                const keepId = shownQuery === runningQuery && activeRow ? activeRow.id : ""
+                shownQuery = runningQuery
                 rows = message.rows
                 // Keep delegates and unchanged roles across query updates.
                 for (let i = 0; i < rows.length; i++) {
@@ -268,7 +368,10 @@ Item {
                     }
                 }
                 if (displayModel.count > rows.length) displayModel.remove(rows.length, displayModel.count - rows.length)
-                selected = 0
+                let keep = 0
+                for (let i = 0; keepId && i < rows.length; i++) if (rows[i].id === keepId) { keep = i; break }
+                selected = keep
+                results.positionViewAtIndex(selected, ListView.Contain)
                 matchMs = message.matchMs
                 assignedSequence = message.seq
                 pendingFrameSequence = message.seq
@@ -278,8 +381,10 @@ Item {
                 loadPreview()
                 if (openedAt && opened) openLatency = openLatency.concat([Date.now() - openedAt]).slice(-1000)
             } else startSearch() // Coalesce rapid input: at most one stale query runs.
-        } else if (message.op === "preview" && message.seq === previewSequence && activeRow && activeRow.id === previewRecord) {
+        } else if (message.op === "preview" && message.seq === previewSequence && previewSubject && previewSubject.id === previewRecord) {
             preview = message.body
+            previewKeyword = message.keyword || ""
+            previewCreated = message.created || 0
         } else if (message.op === "copy") {
             status = message.message
         } else if (message.op === "paste" && message.seq === pendingPaste) {
@@ -328,6 +433,9 @@ Item {
                                   overlayWindowVersion: 1, windowVisible: panel.visible,
                                   windowWidth: panel.width, windowHeight: panel.height,
                                   surfaceColor: panel.color.toString(), cardWidth: card.width, cardHeight: card.height,
+                                  uiVersion: 2, actionsOpen: actionsOpen, actionCount: actionRows.length,
+                                  colors: {accent: Commons.Color.accent.toString(), text: textColor.toString(), dim: dimText.toString(),
+                                           card: Commons.Color.menu.background.toString(), selected: Commons.Color.menu.selectedBackground.toString()},
                                benchmarkRunning: benchmarkRunning, testPhase: testPhase, tests: testResults,
                                layoutResets: layoutResets, layoutProbeResult: layoutProbeResult})
     }
@@ -395,6 +503,7 @@ Item {
     }
 
     onSelectedChanged: loadPreview()
+    onActionQueryChanged: actionSelected = 0
     onExpansionEnabledChanged: resetScratch()
     Keys.onEscapePressed: function(event) { root.close(); event.accepted = true }
     Component.onCompleted: helper.running = true
@@ -538,14 +647,14 @@ Item {
         id: previewTimer
         interval: 120
         onTriggered: {
-            if (!root.activeRow) { root.preview = ""; root.previewRecord = ""; return }
-            root.previewRecord = root.activeRow.id
+            if (!root.previewSubject) { root.preview = ""; root.previewRecord = ""; return }
+            root.previewRecord = root.previewSubject.id
             root.previewSequence = root.send("preview", {record: root.previewRecord})
         }
     }
 
     component Caption: Text {
-        color: Commons.Color.muted
+        color: Util.alpha(Commons.Color.menu.text, 0.55)
         font.family: Style.font.menuFamily
         font.pixelSize: Style.font.caption
         textFormat: Text.PlainText
@@ -553,20 +662,57 @@ Item {
     }
 
     component Divider: Rectangle {
-        implicitWidth: Style.normalBorderWidth
-        implicitHeight: Style.normalBorderWidth
-        color: Util.alpha(Commons.Color.menu.border, 0.28)
+        implicitWidth: Style.spacing.hairline
+        implicitHeight: Style.spacing.hairline
+        color: Util.alpha(Commons.Color.menu.text, 0.12)
     }
 
     component Scrollbar: ScrollBar {
         id: bar
-        contentItem: Rectangle { implicitWidth: Style.space(4); radius: width / 2; color: Commons.Color.menu.text; opacity: bar.active ? 0.5 : 0.2 }
+        contentItem: Rectangle { implicitWidth: Style.space(4); radius: width / 2; visible: bar.size < 1; color: Commons.Color.menu.text; opacity: bar.active ? 0.5 : 0.2 }
         background: Item {}
+    }
+
+    // Raycast-style key cap: "Ctrl" "K".
+    component KeyCap: Rectangle {
+        property alias text: capLabel.text
+        property bool lit: false
+        implicitWidth: Math.max(implicitHeight, capLabel.implicitWidth + Style.space(10))
+        implicitHeight: capLabel.implicitHeight + Style.space(6)
+        radius: Math.min(Style.cornerRadius, Style.space(4))
+        color: lit ? Util.alpha(Commons.Color.menu.selectedText, 0.16) : Util.alpha(Commons.Color.menu.text, 0.08)
+        Text {
+            id: capLabel
+            anchors.centerIn: parent
+            color: parent.lit ? Commons.Color.menu.selectedText : Util.alpha(Commons.Color.menu.text, 0.55)
+            font.family: Style.font.menuFamily
+            font.pixelSize: Style.font.caption
+            textFormat: Text.PlainText
+        }
+    }
+
+    // "Paste ⏎" in the footer.
+    component Hint: Row {
+        property alias label: hintLabel.text
+        property var keys: []
+        spacing: Style.space(6)
+        Text {
+            id: hintLabel
+            anchors.verticalCenter: parent.verticalCenter
+            color: Commons.Color.menu.text
+            font.family: Style.font.menuFamily
+            font.pixelSize: Style.font.bodySmall
+            textFormat: Text.PlainText
+        }
+        Repeater {
+            model: parent.keys
+            KeyCap { required property string modelData; anchors.verticalCenter: parent.verticalCenter; text: modelData }
+        }
     }
 
     component Input: TextField {
         color: Commons.Color.menu.text
-        placeholderTextColor: Commons.Color.muted
+        placeholderTextColor: Util.alpha(Commons.Color.menu.text, 0.38)
         selectionColor: Style.selectionFill
         selectedTextColor: Commons.Color.menu.selectedText
         font.family: Style.font.menuFamily
@@ -575,7 +721,87 @@ Item {
         rightPadding: Style.space(10)
         topPadding: Style.space(7)
         bottomPadding: Style.space(7)
-        background: Rectangle { color: Style.normalFill; border.color: parent.activeFocus ? Commons.Color.accent : Commons.Color.menu.border; border.width: 1; radius: Style.cornerRadius }
+        background: Rectangle { color: Style.normalFill; border.color: parent.activeFocus ? Commons.Color.accent : Util.alpha(Commons.Color.menu.text, 0.12); border.width: 1; radius: Style.cornerRadius }
+    }
+
+    component SearchField: TextField {
+        color: Commons.Color.menu.text
+        placeholderTextColor: Util.alpha(Commons.Color.menu.text, 0.38)
+        selectionColor: Style.selectionFill
+        selectedTextColor: Commons.Color.menu.selectedText
+        font.family: Style.font.menuFamily
+        font.pixelSize: Math.round(Style.font.heading * 1.25)
+        leftPadding: 0
+        rightPadding: 0
+        topPadding: 0
+        bottomPadding: 0
+        background: Item {}
+        Keys.priority: Keys.BeforeItem
+    }
+
+    // A list row in the Omarchy menu treatment: selected rows take the menu
+    // selection fill/border and the selected-text color.
+    component ListRow: BorderSurface {
+        id: listRow
+        property bool current: false
+        property string glyph: ""
+        property string title: ""
+        property string subtitle: ""
+        property bool danger: false
+        default property alias trailing: trailingRow.data
+        signal activated()
+        signal secondary()
+        signal hovered()
+        height: Math.max(Style.space(36), Style.font.title + Style.space(18))
+        radius: Style.cornerRadius
+        color: current ? Commons.Color.menu.selectedBackground : "transparent"
+        borderSpec: current ? Border.surfaceSpec("menu", "selected-border", Commons.Color.menu.selectedBorder, 0) : Border.none()
+        readonly property color tone: danger ? Commons.Color.urgent : current ? Commons.Color.menu.selectedText : Commons.Color.menu.text
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: Style.space(10)
+            anchors.rightMargin: Style.space(10)
+            spacing: Style.space(10)
+            Text {
+                Layout.preferredWidth: Style.font.iconLarge + Style.space(2)
+                horizontalAlignment: Text.AlignHCenter
+                text: listRow.glyph
+                color: listRow.danger ? Commons.Color.urgent : listRow.current ? Commons.Color.menu.selectedText : Util.alpha(Commons.Color.menu.text, 0.55)
+                font.family: Style.font.menuFamily
+                font.pixelSize: Style.font.iconLarge
+            }
+            Text {
+                Layout.fillWidth: !listRow.subtitle.length
+                Layout.maximumWidth: listRow.subtitle.length ? implicitWidth : Number.POSITIVE_INFINITY
+                text: listRow.title
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
+                maximumLineCount: 1
+                color: listRow.tone
+                font.family: Style.font.menuFamily
+                font.pixelSize: Style.font.title
+            }
+            Text {
+                visible: listRow.subtitle.length > 0
+                Layout.fillWidth: true
+                text: listRow.subtitle
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
+                maximumLineCount: 1
+                color: Util.alpha(Commons.Color.menu.text, 0.38)
+                font.family: Style.font.menuFamily
+                font.pixelSize: Style.font.bodySmall
+            }
+            RowLayout { id: trailingRow; spacing: Style.space(4) }
+        }
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            cursorShape: Qt.PointingHandCursor
+            onPositionChanged: listRow.hovered()
+            onClicked: function(mouse) { if (mouse.button === Qt.RightButton) listRow.secondary(); else listRow.activated() }
+        }
     }
 
     // A transparent shell overlay, not a tiled desktop window. Only the card
@@ -600,9 +826,11 @@ Item {
             radius: Style.cornerRadius
             color: Commons.Color.menu.background
             borderSpec: Border.surfaceSpec("menu", "border", Commons.Color.menu.border, Math.max(1, Style.space(2)))
-            padding: Style.spacing.panelPadding
+            clip: true
             Keys.onEscapePressed: function(event) { root.close(); event.accepted = true }
             MouseArea { anchors.fill: parent }
+
+            readonly property int gutter: Style.spacing.huge
 
             ColumnLayout {
                 anchors.fill: parent
@@ -610,145 +838,148 @@ Item {
                 anchors.rightMargin: card.contentRightInset
                 anchors.bottomMargin: card.contentBottomInset
                 anchors.leftMargin: card.contentLeftInset
-                spacing: Style.space(10)
+                spacing: 0
 
-                // Header: identity, mode toggle, close.
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Style.space(8)
-                    Text { text: "󰅍"; color: Commons.Color.accent; font.family: Style.font.menuFamily; font.pixelSize: Style.font.iconLarge }
-                    Text {
-                        text: "Snipboard"
-                        color: Commons.Color.menu.text
-                        font.family: Style.font.menuFamily
-                        font.pixelSize: Style.font.title
-                        font.bold: true
-                    }
-                    Rectangle {
-                        implicitWidth: badge.implicitWidth + Style.space(12)
-                        implicitHeight: badge.implicitHeight + Style.space(4)
-                        radius: height / 2
-                        color: "transparent"
-                        border.color: Util.alpha(Commons.Color.accent, 0.6)
-                        border.width: 1
-                        Caption { id: badge; anchors.centerIn: parent; text: "prototype"; color: Commons.Color.accent }
-                    }
-                    Item { Layout.fillWidth: true }
-                    SbButton {
-                        visible: !root.editorVisible
-                        text: "Scratch"
-                        glyph: "󰏫"
-                        checkable: true
-                        checked: root.scratchVisible
-                        onClicked: { root.scratchVisible = !root.scratchVisible; root.resetScratch() }
-                    }
-                    SbButton { glyph: "󰅖"; hint: "Close (Esc)"; onClicked: root.close() }
-                }
-
-                // Search: large, quiet, accent underline when focused.
+                // Header: one large search line. In the action menu it filters
+                // actions and shows the target as a breadcrumb.
                 Item {
                     visible: !root.editorVisible
                     Layout.fillWidth: true
-                    implicitHeight: search.implicitHeight
-                    Text {
-                        id: searchGlyph
-                        anchors.left: parent.left
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "󰍉"
-                        color: search.activeFocus ? Commons.Color.accent : Commons.Color.muted
-                        font.family: Style.font.menuFamily
-                        font.pixelSize: Style.font.heading
-                    }
-                    TextField {
-                        id: search
-                        anchors.left: searchGlyph.right
-                        anchors.leftMargin: Style.space(10)
-                        anchors.right: parent.right
-                        placeholderText: "Search clipboard and snippets…"
-                        maximumLength: 256
-                        color: Commons.Color.menu.text
-                        placeholderTextColor: Commons.Color.muted
-                        selectionColor: Style.selectionFill
-                        selectedTextColor: Commons.Color.menu.selectedText
-                        font.family: Style.font.menuFamily
-                        font.pixelSize: Style.font.heading
-                        leftPadding: 0
-                        topPadding: Style.space(8)
-                        bottomPadding: Style.space(8)
-                        background: Item {}
-                        onTextChanged: root.requestSearch()
-                        Keys.priority: Keys.BeforeItem
-                        Keys.onPressed: function(event) {
-                            if (event.key === Qt.Key_Escape) {
-                                if (text.length) clear(); else root.close()
-                            } else if (event.key === Qt.Key_Down) root.select(1)
-                            else if (event.key === Qt.Key_Up) root.select(-1)
-                            else if (event.key === Qt.Key_PageDown) root.select(6)
-                            else if (event.key === Qt.Key_PageUp) root.select(-6)
-                            else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) root.paste()
-                            else if (event.key === Qt.Key_N && (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier))) root.editSnippet("")
-                            else if (event.key === Qt.Key_E && (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier))) {
-                                if (root.activeRow && root.activeRow.kind === "snippet") root.editSnippet(root.activeRow.id)
-                            } else if (event.key === Qt.Key_D && (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier))) {
-                                if (root.activeRow) root.editSnippet(root.activeRow.id, true)
-                            } else if (event.key === Qt.Key_Delete && (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier))) {
-                                root.deleteHistory()
-                            } else if (event.key === Qt.Key_C && (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier))) {
-                                if (selectedText.length) { copy(); event.accepted = true; return }
-                                root.copyOnly()
-                            } else return // Preserve editing, selection, Home/End, IME, and paste.
-                            event.accepted = true
+                    implicitHeight: Math.round(Style.font.heading * 1.25) + Style.space(36)
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: card.gutter
+                        anchors.rightMargin: card.gutter
+                        spacing: Style.space(12)
+                        Text {
+                            text: root.actionsOpen ? "󰁍" : "󰅍"
+                            color: Commons.Color.accent
+                            font.family: Style.font.menuFamily
+                            font.pixelSize: Style.font.display
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: root.actionsOpen
+                                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                onClicked: root.closeActions()
+                            }
                         }
-                    }
-                    Rectangle {
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.bottom: parent.bottom
-                        height: search.activeFocus ? Math.max(1, Style.space(2)) : Style.normalBorderWidth
-                        color: search.activeFocus ? Commons.Color.accent : Util.alpha(Commons.Color.menu.border, 0.28)
+                        Rectangle {
+                            visible: root.actionsOpen && root.actionTarget !== null
+                            Layout.maximumWidth: card.width * 0.32
+                            implicitWidth: crumb.implicitWidth + Style.space(16)
+                            implicitHeight: crumb.implicitHeight + Style.space(8)
+                            radius: Style.cornerRadius
+                            color: root.keyFill
+                            Text {
+                                id: crumb
+                                anchors.fill: parent
+                                anchors.leftMargin: Style.space(8)
+                                anchors.rightMargin: Style.space(8)
+                                verticalAlignment: Text.AlignVCenter
+                                text: root.actionTarget ? root.actionTarget.name : ""
+                                textFormat: Text.PlainText
+                                elide: Text.ElideRight
+                                color: root.dimText
+                                font.family: Style.font.menuFamily
+                                font.pixelSize: Style.font.body
+                            }
+                        }
+                        SearchField {
+                            id: search
+                            visible: !root.actionsOpen
+                            Layout.fillWidth: true
+                            placeholderText: "Search clipboard and snippets…"
+                            maximumLength: 256
+                            onTextChanged: root.requestSearch()
+                            Keys.onPressed: function(event) {
+                                const command = event.modifiers & (Qt.ControlModifier | Qt.MetaModifier)
+                                if (event.key === Qt.Key_Escape) {
+                                    if (text.length) clear(); else root.close()
+                                } else if (event.key === Qt.Key_Down) root.select(1)
+                                else if (event.key === Qt.Key_Up) root.select(-1)
+                                else if (event.key === Qt.Key_PageDown) root.select(6)
+                                else if (event.key === Qt.Key_PageUp) root.select(-6)
+                                else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) root.paste()
+                                else if (event.key === Qt.Key_Tab) root.cycleKind(1)
+                                else if (event.key === Qt.Key_Backtab) root.cycleKind(-1)
+                                else if (event.key === Qt.Key_Right && !command && cursorPosition === text.length && !selectedText.length) root.openActions()
+                                else if (event.key === Qt.Key_K && command) root.openActions()
+                                else if (command && event.key >= Qt.Key_1 && event.key <= Qt.Key_9) root.quickPaste(event.key - Qt.Key_0)
+                                else if (event.key === Qt.Key_N && command) root.editSnippet("")
+                                else if (event.key === Qt.Key_E && command) {
+                                    if (root.activeRow && root.activeRow.kind === "snippet") root.editSnippet(root.activeRow.id)
+                                } else if (event.key === Qt.Key_D && command) {
+                                    if (root.activeRow) root.editSnippet(root.activeRow.id, true)
+                                } else if (event.key === Qt.Key_Delete && command) {
+                                    root.deleteHistory()
+                                } else if (event.key === Qt.Key_C && command) {
+                                    if (selectedText.length) { copy(); event.accepted = true; return }
+                                    root.copyOnly()
+                                } else return // Preserve editing, selection, Home/End, IME, and paste.
+                                event.accepted = true
+                            }
+                        }
+                        SearchField {
+                            id: actionSearch
+                            visible: root.actionsOpen
+                            Layout.fillWidth: true
+                            placeholderText: "Search actions…"
+                            maximumLength: 128
+                            onTextChanged: root.actionQuery = text
+                            Keys.onPressed: function(event) {
+                                const command = event.modifiers & (Qt.ControlModifier | Qt.MetaModifier)
+                                if (event.key === Qt.Key_Escape) {
+                                    if (text.length) clear(); else root.closeActions()
+                                } else if ((event.key === Qt.Key_Left || event.key === Qt.Key_Backspace) && !text.length) root.closeActions()
+                                else if (event.key === Qt.Key_K && command) root.closeActions()
+                                else if (event.key === Qt.Key_Down) root.selectAction(1)
+                                else if (event.key === Qt.Key_Up) root.selectAction(-1)
+                                else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) root.runAction(root.actionRows[root.actionSelected])
+                                else return
+                                event.accepted = true
+                            }
+                        }
+                        // Source filter; Tab cycles it from the search field.
+                        Rectangle {
+                            visible: !root.actionsOpen
+                            implicitWidth: kindRow.implicitWidth + Style.space(14)
+                            implicitHeight: kindRow.implicitHeight + Style.space(10)
+                            radius: Style.cornerRadius
+                            color: kindArea.containsMouse ? Style.hoverFill : root.kind === "all" ? "transparent" : Style.selectedAccentFill
+                            border.width: Style.spacing.hairline
+                            border.color: root.kind === "all" ? root.hairline : Util.alpha(Commons.Color.accent, 0.5)
+                            Row {
+                                id: kindRow
+                                anchors.centerIn: parent
+                                spacing: Style.space(8)
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: root.kind === "clipboard" ? "Clipboard" : root.kind === "snippet" ? "Snippets" : "All"
+                                    color: root.kind === "all" ? root.dimText : Commons.Color.accent
+                                    font.family: Style.font.menuFamily
+                                    font.pixelSize: Style.font.body
+                                }
+                                KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "Tab" }
+                            }
+                            MouseArea {
+                                id: kindArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: { root.cycleKind(1); search.forceActiveFocus() }
+                            }
+                        }
                     }
                 }
 
-                // Filters and actions.
-                RowLayout {
-                    visible: !root.editorVisible
-                    Layout.fillWidth: true
-                    spacing: Style.space(6)
-                    Repeater {
-                        model: [{label: "All", value: "all", glyph: "󰒺"}, {label: "Clipboard", value: "clipboard", glyph: "󰅌"}, {label: "Snippets", value: "snippet", glyph: "󰅩"}]
-                        SbButton {
-                            required property var modelData
-                            text: modelData.label
-                            glyph: modelData.glyph
-                            checked: root.kind === modelData.value
-                            onClicked: { root.kind = modelData.value; root.requestSearch(); search.forceActiveFocus() }
-                        }
-                    }
-                    Item { Layout.fillWidth: true }
-                    SbButton { text: "New"; glyph: "󰐕"; hint: "New snippet (Ctrl+N)"; enabled: root.ready && !root.pendingEditor && !root.pendingReload; onClicked: root.editSnippet("") }
-                    SbButton { text: "Edit"; glyph: "󰏫"; hint: "Edit snippet (Ctrl+E)"; enabled: root.ready && !root.pendingEditor && !root.pendingReload && root.activeRow !== null && root.activeRow.kind === "snippet"; onClicked: root.editSnippet(root.activeRow.id) }
-                    SbButton {
-                        text: root.activeRow && root.activeRow.kind === "clipboard" ? "Save snippet" : "Duplicate"
-                        hint: "Create a new snippet from this result (Ctrl+D)"
-                        enabled: root.ready && !root.pendingEditor && !root.pendingReload && root.activeRow !== null
-                        onClicked: root.editSnippet(root.activeRow.id, true)
-                    }
-                    SbButton { text: "Copy"; glyph: "󰆏"; enabled: root.activeRow !== null; onClicked: root.copyOnly() }
-                    SbButton {
-                        glyph: "󰆴"
-                        danger: true
-                        hint: "Delete clipboard entry (Ctrl+Delete)"
-                        enabled: root.ready && !root.pendingHistoryDelete && !root.pendingPaste && root.activeRow !== null && root.activeRow.kind === "clipboard"
-                        onClicked: root.deleteHistory()
-                    }
-                    SbButton { glyph: "󰑐"; hint: "Reload library from disk"; enabled: root.ready && !root.pendingEditor && !root.pendingReload; onClicked: { root.expansionEnabled = false; root.resetScratch(); root.pendingRender = null; root.pendingReload = root.send("library-reload", {}) } }
-                }
+                Divider { visible: !root.editorVisible; Layout.fillWidth: true }
 
                 SbSnippetEditor {
                     id: snippetEditor
                     visible: root.editorVisible
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    Layout.margins: card.gutter
                     onSaveRequested: function(fields) { root.mutateSnippet("snippet-save", fields) }
                     onDeleteRequested: root.mutateSnippet("snippet-delete", null)
                     onDismissed: function(closePanel) {
@@ -758,85 +989,126 @@ Item {
                     }
                 }
 
+                // Body: list on the left, preview (or scratchpad) on the right.
                 RowLayout {
                     visible: !root.editorVisible
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    spacing: Style.spacing.panelPadding
-                    ListView {
-                        id: results
-                        Layout.fillWidth: true
+                    spacing: 0
+
+                    ColumnLayout {
                         Layout.fillHeight: true
-                        Layout.preferredWidth: card.width / 2
-                        clip: true
-                        model: displayModel
-                        boundsBehavior: Flickable.StopAtBounds
-                        spacing: Style.space(2)
-                        ScrollBar.vertical: Scrollbar {}
-                        delegate: Rectangle {
-                            id: row
-                            required property string recordId
-                            required property string name
-                            required property string kind
-                            required property string summary
-                            required property int index
-                            readonly property bool current: index === root.selected
-                            width: results.width
-                            height: Math.max(Style.space(50), Style.font.body + Style.font.caption + Style.space(26))
-                            radius: Style.cornerRadius
-                            color: current ? Commons.Color.menu.selectedBackground : "transparent"
-                            border.color: current ? Commons.Color.menu.selectedBorder : "transparent"
-                            border.width: current ? Style.selectedBorderWidth : 0
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: Style.space(10)
-                                anchors.rightMargin: Style.space(12)
-                                spacing: Style.space(10)
+                        Layout.preferredWidth: card.width * 0.55
+                        Layout.maximumWidth: card.width * 0.55
+                        Layout.topMargin: Style.space(10)
+                        Layout.bottomMargin: Style.space(8)
+                        Layout.leftMargin: Style.space(8)
+                        Layout.rightMargin: Style.space(8)
+                        spacing: Style.space(6)
+
+                        Caption {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: Style.space(10)
+                            font.pixelSize: Style.font.bodySmall
+                            font.weight: Font.Medium
+                            text: root.actionsOpen ? (root.actionTarget ? "Actions" : "General actions")
+                                : root.kind === "clipboard" ? "Clipboard history" : root.kind === "snippet" ? "Snippets" : "Clipboard & snippets"
+                        }
+
+                        ListView {
+                            id: results
+                            visible: !root.actionsOpen
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            clip: true
+                            model: displayModel
+                            boundsBehavior: Flickable.StopAtBounds
+                            spacing: Style.space(2)
+                            ScrollBar.vertical: Scrollbar {}
+                            // First fully-or-partly visible row, for Ctrl+1–9 hints.
+                            readonly property int firstVisible: { contentY; count; return Math.max(0, indexAt(Style.space(20), contentY + 1)) }
+                            delegate: ListRow {
+                                id: resultRow
+                                required property string recordId
+                                required property string name
+                                required property string kind
+                                required property string summary
+                                required property int index
+                                readonly property int position: index - results.firstVisible + 1
+                                width: results.width
+                                current: index === root.selected
+                                glyph: root.rowGlyph(kind, name)
+                                title: name
+                                subtitle: kind === "snippet" && summary !== name ? summary : ""
+                                onHovered: root.selected = index
+                                onActivated: { root.selected = index; root.paste() }
+                                onSecondary: { root.selected = index; root.openActions() }
+                                KeyCap { visible: resultRow.current; text: "⏎"; lit: true }
                                 Text {
-                                    Layout.preferredWidth: Style.font.iconLarge + Style.space(4)
-                                    horizontalAlignment: Text.AlignHCenter
-                                    text: row.kind === "snippet" ? "󰅩" : "󰅌"
-                                    color: row.current ? Commons.Color.menu.selectedText : Commons.Color.muted
+                                    visible: !resultRow.current && resultRow.position >= 1 && resultRow.position <= 9
+                                    text: "^" + resultRow.position
+                                    color: root.faintText
                                     font.family: Style.font.menuFamily
-                                    font.pixelSize: Style.font.iconLarge
-                                }
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    spacing: Style.space(2)
-                                    Text { Layout.fillWidth: true; text: row.name; textFormat: Text.PlainText; color: row.current ? Commons.Color.menu.selectedText : Commons.Color.menu.text; font.family: Style.font.menuFamily; font.pixelSize: Style.font.title; elide: Text.ElideRight }
-                                    Text { Layout.fillWidth: true; text: row.summary; textFormat: Text.PlainText; color: Commons.Color.menu.text; opacity: 0.55; font.family: Style.font.menuFamily; font.pixelSize: Style.font.caption; elide: Text.ElideRight }
+                                    font.pixelSize: Style.font.caption
                                 }
                             }
-                            MouseArea {
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onPositionChanged: root.selected = row.index
-                                onClicked: { root.selected = row.index; root.paste() }
+                            Column {
+                                anchors.centerIn: parent
+                                width: parent.width
+                                spacing: Style.space(8)
+                                visible: !root.rows.length
+                                Text {
+                                    width: parent.width
+                                    horizontalAlignment: Text.AlignHCenter
+                                    text: root.ready ? "󰅌" : "󰔟"
+                                    color: root.faintText
+                                    font.family: Style.font.menuFamily
+                                    font.pixelSize: Style.font.displayLarge
+                                }
+                                Text {
+                                    width: parent.width
+                                    horizontalAlignment: Text.AlignHCenter
+                                    text: !root.ready ? "Loading…" : search.text.length ? "No matches for “" + search.text + "”" : "Nothing here yet"
+                                    textFormat: Text.PlainText
+                                    elide: Text.ElideMiddle
+                                    color: root.dimText
+                                    font.family: Style.font.menuFamily
+                                    font.pixelSize: Style.font.title
+                                }
                             }
                         }
-                        Column {
-                            anchors.centerIn: parent
-                            width: parent.width
-                            spacing: Style.space(8)
-                            visible: !root.rows.length
-                            Text {
-                                width: parent.width
-                                horizontalAlignment: Text.AlignHCenter
-                                text: root.ready ? "󰅌" : "󰔟"
-                                color: Commons.Color.menu.selectedText
-                                opacity: 0.8
-                                font.family: Style.font.menuFamily
-                                font.pixelSize: Style.font.displayLarge
+
+                        ListView {
+                            id: actionList
+                            visible: root.actionsOpen
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            clip: true
+                            model: root.actionRows
+                            boundsBehavior: Flickable.StopAtBounds
+                            spacing: Style.space(2)
+                            ScrollBar.vertical: Scrollbar {}
+                            delegate: ListRow {
+                                id: actionRow
+                                required property var modelData
+                                required property int index
+                                width: actionList.width
+                                current: index === root.actionSelected
+                                glyph: modelData.glyph
+                                title: modelData.label
+                                danger: modelData.danger === true
+                                onHovered: root.actionSelected = index
+                                onActivated: root.runAction(modelData)
+                                Repeater {
+                                    model: actionRow.current ? ["⏎"] : actionRow.modelData.keys
+                                    KeyCap { required property string modelData; text: modelData; lit: actionRow.current }
+                                }
                             }
                             Text {
-                                width: parent.width
-                                horizontalAlignment: Text.AlignHCenter
-                                text: !root.ready ? "Loading…" : search.text.length ? "No matches for “" + search.text + "”" : "Nothing here yet"
-                                textFormat: Text.PlainText
-                                elide: Text.ElideMiddle
-                                color: Commons.Color.menu.text
-                                opacity: 0.7
+                                anchors.centerIn: parent
+                                visible: !root.actionRows.length
+                                text: "No matching actions"
+                                color: root.dimText
                                 font.family: Style.font.menuFamily
                                 font.pixelSize: Style.font.title
                             }
@@ -845,38 +1117,72 @@ Item {
 
                     Divider { Layout.fillHeight: true }
 
+                    // Preview: exact text, with stats pinned to the bottom (Alfred).
                     ColumnLayout {
+                        visible: !root.scratchVisible
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        Layout.preferredWidth: card.width / 2
+                        Layout.margins: card.gutter
                         spacing: Style.space(8)
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Caption { text: root.scratchVisible ? "SCRATCHPAD" : "PREVIEW"; font.letterSpacing: 1; font.bold: true }
-                            Caption {
-                                Layout.fillWidth: true
-                                horizontalAlignment: Text.AlignRight
-                                text: root.scratchVisible ? "Disposable input · never an external app" : root.activeRow ? (root.activeRow.kind === "snippet" ? "Snippet · exact text" : "Clipboard · exact text") : ""
-                            }
-                        }
                         ScrollView {
-                            visible: !root.scratchVisible
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
                             ScrollBar.vertical: Scrollbar {}
-                            TextArea { text: root.preview; readOnly: true; textFormat: TextEdit.PlainText; wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere; color: Commons.Color.menu.text; selectionColor: Style.selectionFill; selectedTextColor: Commons.Color.menu.selectedText; font.family: Style.font.menuFamily; font.pixelSize: Style.font.title; leftPadding: 0; rightPadding: Style.space(8); topPadding: 0; background: Item {} }
+                            TextArea {
+                                text: root.previewSubject ? root.preview : ""
+                                placeholderText: root.previewSubject ? "" : "Nothing selected"
+                                placeholderTextColor: root.faintText
+                                readOnly: true
+                                textFormat: TextEdit.PlainText
+                                wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
+                                color: root.textColor
+                                selectionColor: Style.selectionFill
+                                selectedTextColor: Commons.Color.menu.selectedText
+                                font.family: Style.font.menuFamily
+                                font.pixelSize: Style.font.body
+                                padding: 0
+                                rightPadding: Style.space(8)
+                                background: Item {}
+                            }
+                        }
+                        Caption {
+                            visible: root.previewSubject !== null && root.preview.length > 0
+                            Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignHCenter
+                            text: SbActions.stats(root.preview)
+                        }
+                        Caption {
+                            visible: text.length > 0
+                            Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignHCenter
+                            text: !root.previewSubject ? "" : root.previewSubject.kind === "snippet"
+                                ? "Snippet" + (root.previewKeyword.length ? " · " + root.previewKeyword : "")
+                                : root.previewCreated > 0 ? "Copied " + SbActions.when(root.previewCreated) : "Clipboard"
+                        }
+                    }
+
+                    // Disposable expansion scratchpad, swapped in for the preview.
+                    ColumnLayout {
+                        visible: root.scratchVisible
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        Layout.margins: card.gutter
+                        spacing: Style.space(8)
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Caption { text: "Scratchpad"; color: root.textColor; font.pixelSize: Style.font.bodySmall; font.weight: Font.Medium }
+                            Caption { Layout.fillWidth: true; horizontalAlignment: Text.AlignRight; text: "Disposable · never an external app" }
+                            SbButton { glyph: "󰅖"; hint: "Close scratchpad"; onClicked: { root.scratchVisible = false; root.resetScratch(); search.forceActiveFocus() } }
                         }
                         Input {
                             id: clipboardInput
-                            visible: root.scratchVisible
                             Layout.fillWidth: true
                             maximumLength: 16384
                             placeholderText: "{clipboard} value (not the system clipboard)"
                             onTextChanged: root.resetScratch()
                         }
                         SbButton {
-                            visible: root.scratchVisible
                             Layout.fillWidth: true
                             text: root.expansionEnabled ? "Scratch expansion on" : "Enable scratch expansion"
                             glyph: root.expansionEnabled ? "󰄬" : "󰐊"
@@ -884,7 +1190,6 @@ Item {
                             onClicked: { root.expansionEnabled = !root.expansionEnabled; scratch.forceActiveFocus(); root.resetScratch() }
                         }
                         ScrollView {
-                            visible: root.scratchVisible
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
@@ -895,13 +1200,13 @@ Item {
                                 textFormat: TextEdit.PlainText
                                 wrapMode: TextEdit.WrapAnywhere
                                 color: Commons.Color.menu.text
-                                placeholderTextColor: Commons.Color.muted
+                                placeholderTextColor: root.faintText
                                 selectionColor: Style.selectionFill
                                 selectedTextColor: Commons.Color.menu.selectedText
                                 font.family: Style.font.menuFamily
                                 font.pixelSize: Style.font.body
                                 padding: Style.space(10)
-                                background: Rectangle { color: Style.normalFill; border.color: scratch.activeFocus ? Commons.Color.accent : Commons.Color.menu.border; border.width: 1; radius: Style.cornerRadius }
+                                background: Rectangle { color: Style.normalFill; border.color: scratch.activeFocus ? Commons.Color.accent : root.hairline; border.width: 1; radius: Style.cornerRadius }
                                 onActiveFocusChanged: root.resetScratch()
                                 onCursorPositionChanged: root.scratchRevision++
                                 onSelectionStartChanged: root.scratchRevision++
@@ -914,28 +1219,39 @@ Item {
                                 }
                             }
                         }
-                        SbButton { visible: root.scratchVisible; Layout.fillWidth: true; text: "Insert selected into scratch"; glyph: "󰁅"; enabled: root.activeRow !== null; onClicked: root.insertScratch() }
+                        SbButton { Layout.fillWidth: true; text: "Insert selected into scratch"; glyph: "󰁅"; enabled: root.activeRow !== null; onClicked: root.insertScratch() }
                     }
                 }
 
                 Divider { Layout.fillWidth: true }
 
-                // Footer: status on the left, key hints on the right.
+                // Footer: identity and status on the left, primary keys on the right.
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: Style.space(12)
+                    Layout.leftMargin: card.gutter
+                    Layout.rightMargin: card.gutter
+                    Layout.topMargin: Style.space(9)
+                    Layout.bottomMargin: Style.space(9)
+                    spacing: Style.space(10)
+                    Text { text: "󰅍"; color: Commons.Color.accent; font.family: Style.font.menuFamily; font.pixelSize: Style.font.title }
+                    Text { text: "Snipboard"; color: root.dimText; font.family: Style.font.menuFamily; font.pixelSize: Style.font.bodySmall }
                     Caption {
                         Layout.fillWidth: true
                         font.pixelSize: Style.font.bodySmall
+                        color: root.faintText
                         text: root.status
-                        wrapMode: Text.Wrap
-                        maximumLineCount: 2
+                        maximumLineCount: 1
                     }
-                    Caption {
+                    Hint {
                         visible: !root.editorVisible
-                        text: "↑↓ select   ⏎ paste   ^C copy   esc close"
-                        font.pixelSize: Style.font.bodySmall
-                        elide: Text.ElideNone
+                        label: root.actionsOpen ? "Run" : "Paste"
+                        keys: ["⏎"]
+                    }
+                    Divider { visible: !root.editorVisible; Layout.preferredHeight: Style.font.title }
+                    Hint {
+                        visible: !root.editorVisible
+                        label: root.actionsOpen ? "Back" : "Actions"
+                        keys: root.actionsOpen ? ["←"] : ["→"]
                     }
                 }
             }

@@ -109,7 +109,10 @@ fn clipboard_callback_capture_search_literal_reuse_and_restart() {
     assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
     worker.shutdown();
     let mut worker = Worker::launch(directory.path());
-    assert_eq!(worker.request(json!({"op": "preview", "record": record}))["body"], text);
+    let preview = worker.request(json!({"op": "preview", "record": record}));
+    assert_eq!(preview["body"], text);
+    assert_eq!(preview["kind"], "clipboard");
+    assert!(preview["created"].as_f64().unwrap() > 0.0, "capture time survives restart");
     worker.shutdown();
 }
 
