@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/jwkicklighter/omarchy-snipboard/compare/v0.2.0...v0.3.0) (2026-10-21)
+
+
+### Features
+
+* bundle worker for one-command plugin installation ([#3](https://github.com/jwkicklighter/omarchy-snipboard/issues/3)) ([df3bd73](https://github.com/jwkicklighter/omarchy-snipboard/commit/df3bd73cd65d1a9d6325f357a2271c9ef5acb993))
+
 ## [0.2.0](https://github.com/jwkicklighter/omarchy-snipboard/compare/v0.1.0...v0.2.0) (2026-10-20)
 
 
