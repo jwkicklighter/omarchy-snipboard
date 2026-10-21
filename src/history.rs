@@ -164,6 +164,22 @@ mod tests {
     }
 
     #[test]
+    fn repeat_promotes_existing_identity_without_normalizing_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.local.json");
+        let mut history = History::default();
+        let first = history.capture(&path, " first\r\n", 1.0).unwrap();
+        let second = history.capture(&path, "second", 2.0).unwrap();
+        let distinct = history.capture(&path, "first\n", 3.0).unwrap();
+        assert_eq!(history.capture(&path, " first\r\n", 4.0).unwrap(), first);
+        let records = history.records();
+        assert_eq!(records.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(), vec![first.as_str(), distinct.as_str(), second.as_str()]);
+        assert_eq!(records[0].body, " first\r\n");
+        assert_eq!(records[0].created, 4.0);
+        assert_eq!(History::read(&path, 5.0).unwrap().records(), records);
+    }
+
+    #[test]
     fn deletion_is_atomic_and_survives_restart() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("history.local.json");
