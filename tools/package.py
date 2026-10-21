@@ -39,7 +39,7 @@ def release_files(root=ROOT):
     # An explicit allowlist prevents accidental publication of personal/local data.
     names = [
         "manifest.json", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE", "preview.png",
-        "Snipboard.qml", "SbActions.js", "SbButton.qml", "SbPasteHandoff.qml",
+        "Snipboard.qml", "SbActions.js", "SbButton.qml", "SbPasteHandoff.qml", "SbPreview.qml",
         "SbSnippetEditor.qml", "bin/linux-x86_64/snipboard-worker", "bin/linux-x86_64/worker.json",
     ]
     files = [root / name for name in names] + sorted((root / "docs").glob("*.md"))

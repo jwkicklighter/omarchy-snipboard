@@ -64,6 +64,7 @@ class ReleaseTests(unittest.TestCase):
         self.assertIn("bin/linux-x86_64/worker.json", paths)
         self.assertFalse(any(path.startswith("build/") for path in paths))
         self.assertIn("SbActions.js", paths)
+        self.assertIn("SbPreview.qml", paths)
         self.assertIn("preview.png", paths)
         self.assertFalse(any(".git" in path or "local.json" in path or path.startswith("tests/") for path in paths))
 
