@@ -39,7 +39,7 @@ jobs:
       - name: Install test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxkbcommon-dev xkb-data lua5.4 jq qt6-declarative-dev-tools qml6-module-qttest qml6-module-qtqml-workerscript qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtquick-layouts qml6-module-qtquick-controls qml6-module-qtquick-templates
+          sudo apt-get install -y binutils libxkbcommon-dev xkb-data lua5.4 jq qt6-declarative-dev-tools qml6-module-qttest qml6-module-qtqml-workerscript qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtquick-layouts qml6-module-qtquick-controls qml6-module-qtquick-templates
           echo /usr/lib/qt6/bin >> "$GITHUB_PATH"
       - name: Check marketplace manifest with pinned Omarchy validator
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -50,6 +50,8 @@ jobs:
           sparse-checkout: bin/omarchy-plugin-validate
           sparse-checkout-cone-mode: false
       - run: bash .ci-omarchy/bin/omarchy-plugin-validate .
+      - name: Verify checked-in worker matches source and package versions
+        run: python3 tools/bundle.py
       - name: Build and test (including Qt, Lua, keyboard layouts and worker)
         run: |
           cargo build --release --locked

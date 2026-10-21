@@ -6,12 +6,18 @@
   and weekly checks using Rust 1.89 and the current stable toolchain. Runs the
   Rust, keyboard-layout, Qt Quick, Lua, worker, and Python packaging tests; checks
   the manifest using a pinned upstream Omarchy Quattro validator; packages and
-  starts the worker from an extracted release bundle. CI never activates a real
-  desktop plugin. Full Omarchy QML lint and live compositor tests remain local.
+  verifies the tracked worker's version, source fingerprint, architecture, libc
+  requirements and checksum, then starts it from an extracted release bundle.
+  CI never activates a real desktop plugin. Full Omarchy QML lint and live
+  compositor tests remain local.
 - `.github/workflows/release.yml`: pushes to `master` run Release Please, which
-  maintains a release PR from Conventional Commits and enables squash auto-merge.
+  maintains a release PR from Conventional Commits.
   The PR updates `Cargo.toml`, `Cargo.lock`, `manifest.json`, the release manifest,
-  and changelog. Merging it creates a tag and draft release, runs the same CI at
+  and changelog. A read-only build job compiles the PR's exact source on Ubuntu
+  24.04, then a separate write job commits the executable and metadata to the PR
+  and enables squash auto-merge. No PR scripts or binaries execute in the write
+  job. The token-authenticated commit triggers fresh required CI checks.
+  Merging it creates a tag and draft release, runs the same CI at
   that exact tag, then uploads the Linux x86_64 bundle and checksum and publishes.
   Failed tests, packaging, or version checks leave the release unpublished.
 - An opt-in release job opens a marketplace **update request**, not an approval.
@@ -47,9 +53,10 @@ the Prototype name/status rather than claiming unfinished features are stable.
      --body-file docs/marketplace-submission.md
    ```
 
-5. Address compatibility/security-baseline feedback in the same issue. Ask for
-   the marketplace's `manual-setup` classification: source installs require a
-   worker build. There is intentionally no download-and-execute installer.
+5. Address compatibility/security-baseline feedback in the same issue. Disclose
+   the checked-in Linux x86_64 worker and its runtime dependencies. Standard Git
+   installs need no manual build or first-run download; marketplace maintainers
+   decide the listing's classification and review requirements.
 6. Wait for marketplace maintainer review and `approved-and-verified` publication.
    Only after the listing exists should update-request automation be enabled.
 
@@ -86,7 +93,8 @@ independently retryable. Disable update requests by setting the variable to
 Like `herdr-prompt-library`, this workflow requires an Actions secret named
 `RELEASE_PLEASE_TOKEN`: a dedicated credential with repository contents and pull
 request read/write permissions. It must be able to create PRs, tags, and draft
-releases and enable auto-merge. Using a separate token rather than `GITHUB_TOKEN`
+releases, push bundled-worker commits to release PR branches, and enable auto-merge.
+Using a separate token rather than `GITHUB_TOKEN`
 allows release PRs and merges to trigger CI and subsequent release runs. Configure
 it through GitHub Settings or `gh secret set RELEASE_PLEASE_TOKEN`; do not copy a
 local login credential into CI.
@@ -105,13 +113,22 @@ metadata and an extra JSON updater for the plugin manifest. The initial
 1. Use Conventional Commits (`feat:`, `fix:`, etc.) and push changes to `master`.
    Release Please calculates the next version and maintains the release PR;
    do not manually bump package versions or create release tags.
-2. Run `make build test validate package` on Omarchy. Review runtime compatibility
+2. Source PRs changing worker/Cargo inputs must also refresh the tracked executable
+   and metadata using `make bundle` on Ubuntu 24.04 x86_64; CI rejects stale workers.
+   QML/docs-only changes do not require a worker rebuild. Run
+   `make build test validate package` on Omarchy. Review runtime compatibility
    separately; successful offscreen CI does not prove all external apps work.
-3. Review the release PR's version and changelog. Auto-merge completes once the
+3. Review the release PR's version and changelog. The workflow bundles the worker
+   before enabling auto-merge. Auto-merge completes once the
    repository's required checks/reviews pass. The subsequent `master` push creates
-   the tagged draft, builds and tests it, uploads assets, then publishes it.
+   the tagged draft, tests it, packages the exact tracked worker, uploads assets,
+   then publishes it. Cargo rebuilds in CI test the source, but do not replace
+   the checked-in executable in the release archive.
    If checks or upload fail, rerun the failed jobs in that original workflow run;
    the draft stays unpublished until publication succeeds. Do not move tags.
+   For a worker-build failure before the release PR merges, rerun the failed jobs
+   or manually dispatch **Release** on `master`; it also finds an existing pending
+   release PR when Release Please has no new updates.
 4. If opted in, the workflow opens `[Verify]: Snipboard vX.Y.Z` with the exact
    release SHA. It refuses stale tags, draft releases, and prereleases. Marketplace
    updates require current upstream HEAD, so avoid advancing `master` while the

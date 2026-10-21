@@ -40,14 +40,14 @@ def release_files(root=ROOT):
     names = [
         "manifest.json", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE", "preview.png",
         "Snipboard.qml", "SbActions.js", "SbButton.qml", "SbPasteHandoff.qml",
-        "SbSnippetEditor.qml", "build/release/snipboard-worker",
+        "SbSnippetEditor.qml", "bin/linux-x86_64/snipboard-worker", "bin/linux-x86_64/worker.json",
     ]
     files = [root / name for name in names] + sorted((root / "docs").glob("*.md"))
     for path in files:
         if path.is_symlink() or not path.is_file():
             raise ValueError(f"Missing or unsafe release file: {path}")
-    if not os.access(root / "build/release/snipboard-worker", os.X_OK):
-        raise ValueError("Build the executable worker first")
+    if not os.access(root / "bin/linux-x86_64/snipboard-worker", os.X_OK):
+        raise ValueError("Missing executable bundled worker")
     return files
 
 
@@ -57,7 +57,7 @@ def smoke_test(archive):
         base = Path(directory)
         with tarfile.open(archive) as bundle:
             bundle.extractall(base, filter="data")
-        worker = base / PLUGIN_ID / "build/release/snipboard-worker"
+        worker = base / PLUGIN_ID / "bin/linux-x86_64/snipboard-worker"
         process = subprocess.Popen(
             [str(worker), "--data", str(base / "data")],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -91,6 +91,8 @@ def main():
         return
     if platform.system() != "Linux" or platform.machine() != "x86_64":
         raise ValueError("This release target supports Linux x86_64 only")
+    from bundle import check_bundle
+    check_bundle()
     files = release_files()
     destination = ROOT / "build/dist"
     destination.mkdir(parents=True, exist_ok=True)
