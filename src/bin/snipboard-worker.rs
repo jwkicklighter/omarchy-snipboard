@@ -51,7 +51,7 @@ fn clipboard_event() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let Ok(text) = String::from_utf8(bytes) else { return ExitCode::SUCCESS };
-    if text.is_empty() || text.contains('\0') {
+    if text.trim().is_empty() || text.contains('\0') {
         return ExitCode::SUCCESS;
     }
     let event = snipboard::json::to_ascii_string(&serde_json::json!({"text": text}));

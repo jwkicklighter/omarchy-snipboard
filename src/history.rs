@@ -29,7 +29,7 @@ pub struct History {
 }
 
 fn valid_text(text: &str) -> bool {
-    !text.is_empty() && !text.contains('\0') && char_len(text) <= MAX_BODY
+    !text.trim().is_empty() && !text.contains('\0') && char_len(text) <= MAX_BODY
 }
 
 fn id(text: &str) -> String {
@@ -46,7 +46,7 @@ impl History {
         let mut ids = HashSet::new();
         if history.entries.len() > MAX_ITEMS
             || history.entries.iter().map(|e| e.body.len()).sum::<usize>() > MAX_BYTES
-            || history.entries.iter().any(|e| !valid_text(&e.body) || !e.created.is_finite() || e.created < 0.0 || !ids.insert(id(&e.body)))
+            || history.entries.iter().any(|e| e.body.contains('\0') || char_len(&e.body) > MAX_BODY || !e.created.is_finite() || e.created < 0.0 || !ids.insert(id(&e.body)))
         {
             return Err(Error::Invalid("invalid history"));
         }
@@ -59,7 +59,8 @@ impl History {
     }
 
     fn prune(&mut self, now: f64) {
-        self.entries.retain(|entry| now - entry.created <= MAX_AGE);
+        // Older versions accepted whitespace-only entries; discard them on load too.
+        self.entries.retain(|entry| !entry.body.trim().is_empty() && now - entry.created <= MAX_AGE);
         self.entries.sort_by(|a, b| b.created.total_cmp(&a.created));
         self.entries.truncate(MAX_ITEMS);
         let mut bytes = 0;
@@ -142,6 +143,27 @@ mod tests {
     }
 
     #[test]
+    fn blank_captures_never_write_and_legacy_blanks_are_pruned() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.local.json");
+        let mut history = History::default();
+        for blank in ["", " ", "\t\r\n", "\u{a0}\u{2003}\u{2028}\u{3000}"] {
+            assert!(history.capture(&path, blank, 1.0).is_err());
+            assert!(history.records().is_empty());
+            assert!(!path.exists());
+        }
+        let text = " \t🌍\r\n ";
+        history.capture(&path, text, 2.0).unwrap();
+        history.entries.push(Entry { body: "\u{2003}\n".into(), created: 3.0 });
+        atomic_write(&path, &history).unwrap();
+        let restored = History::read(&path, 4.0).unwrap();
+        assert_eq!(restored.records().len(), 1);
+        assert_eq!(restored.records()[0].body, text);
+        let persisted: History = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(persisted.records(), restored.records());
+    }
+
+    #[test]
     fn deletion_is_atomic_and_survives_restart() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("history.local.json");
@@ -177,7 +199,7 @@ mod tests {
         let mut history = History::default();
         history.capture(&path, "original", 1.0).unwrap();
         let before = std::fs::read(&path).unwrap();
-        for invalid in ["".to_owned(), "nul\0".to_owned(), "x".repeat(MAX_BODY + 1)] {
+        for invalid in ["".to_owned(), " \t\r\n\u{2003}".to_owned(), "nul\0".to_owned(), "x".repeat(MAX_BODY + 1)] {
             assert!(history.capture(&path, &invalid, 2.0).is_err());
         }
         FAIL_REPLACE.set(true);
