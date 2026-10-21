@@ -117,6 +117,30 @@ fn clipboard_callback_capture_search_literal_reuse_and_restart() {
 }
 
 #[test]
+fn clipboard_blanks_are_not_stored_or_written() {
+    let directory = data();
+    let path = directory.path().join("history.local.json");
+    let mut worker = Worker::launch(directory.path());
+    for blank in ["", " \t\r\n", "\u{a0}\u{2003}\u{2028}\u{3000}"] {
+        assert!(worker.request(json!({"op": "clipboard-capture", "text": blank})).get("error").is_some());
+        assert!(!path.exists());
+    }
+    let text = " \tFirst 🌍\r\n ";
+    let record = worker.request(json!({"op": "clipboard-capture", "text": text}))["record"].clone();
+    let before = fs::read(&path).unwrap();
+    assert!(worker.request(json!({"op": "clipboard-capture", "text": " \n\u{2003}"})).get("error").is_some());
+    assert_eq!(fs::read(&path).unwrap(), before);
+    let rows = worker.request(json!({"op": "search", "kind": "clipboard"}))["rows"].clone();
+    assert_eq!(rows.as_array().unwrap().len(), 1);
+    assert_eq!(rows[0]["id"], record);
+    worker.shutdown();
+    let mut worker = Worker::launch(directory.path());
+    assert_eq!(worker.request(json!({"op": "search", "kind": "clipboard"}))["rows"], rows);
+    assert_eq!(worker.request(json!({"op": "render", "record": record}))["text"], text);
+    worker.shutdown();
+}
+
+#[test]
 fn clipboard_repeats_promote_one_exact_item() {
     let directory = data();
     let mut worker = Worker::launch(directory.path());
@@ -176,7 +200,8 @@ fn clipboard_delete_is_history_only_and_persists() {
 fn clipboard_callback_ignores_sensitive_empty_binary_and_oversized_selections() {
     for (state, bytes) in [
         ("sensitive", b"private".to_vec()), ("nil", vec![]), ("clear", vec![]),
-        ("data", vec![]), ("data", vec![0xff]), ("data", b"nul\0".to_vec()),
+        ("data", vec![]), ("data", b" \t\r\n".to_vec()), ("data", "\u{a0}\u{2003}\u{3000}".as_bytes().to_vec()),
+        ("data", vec![0xff]), ("data", b"nul\0".to_vec()),
         ("data", vec![b'x'; 65537]),
     ] {
         let mut callback = Command::new(WORKER).arg("--clipboard-event").env("CLIPBOARD_STATE", state)
