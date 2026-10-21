@@ -1,6 +1,6 @@
 {
-  "version": "0.3.0",
+  "version": "0.3.1",
   "target": "x86_64-unknown-linux-gnu",
-  "sha256": "c77638c34ba1d271a8a4fb85646e6d326a6c08eb8582851ee2538eac4640c246",
-  "source_sha256": "46008d23a6c640c16b2c798cc92461bbbd21b6b616abf2ddb94b5ae97bcb608d"
+  "sha256": "d34a009248fea1f46c59d99b969b857609822bf02af9d8c468b1b99063692727",
+  "source_sha256": "d4806abdaff3bb2c82cc2fc70e090d8099187d0e184c47796668397aac59676b"
 }
