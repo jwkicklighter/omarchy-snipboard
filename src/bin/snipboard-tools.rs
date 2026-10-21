@@ -186,7 +186,7 @@ fn validate() -> Outcome {
     let result = Command::new("/usr/lib/qt6/bin/qmllint")
         .arg("-I")
         .arg(&imports.0)
-        .args(["Snipboard.qml", "SbButton.qml", "SbSnippetEditor.qml", "SbPasteHandoff.qml"].map(|name| root.join(name)))
+        .args(["Snipboard.qml", "SbButton.qml", "SbSnippetEditor.qml", "SbPasteHandoff.qml", "SbPreview.qml"].map(|name| root.join(name)))
         .output()
         .map_err(|e| e.to_string())?;
     let output = String::from_utf8_lossy(&result.stdout).into_owned() + &String::from_utf8_lossy(&result.stderr);

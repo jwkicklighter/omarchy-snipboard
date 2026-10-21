@@ -23,13 +23,11 @@ Item {
     property int sequence: 0
     property int wantedSearch: 0
     property int runningSearch: 0
-    property int previewSequence: 0
-    property string previewRecord: ""
     property var rows: []
     property int selected: 0
-    property string preview: ""
-    property string previewKeyword: ""
-    property real previewCreated: 0
+    readonly property string preview: previewLoader.body
+    readonly property string previewKeyword: previewLoader.keyword
+    readonly property real previewCreated: previewLoader.created
     property string shownQuery: ""
     property string runningQuery: ""
     // Right arrow / Ctrl+K: actions for the row that was selected when opened.
@@ -117,7 +115,7 @@ Item {
         expansionEnabled = false
         resetScratch()
         pendingRender = null
-        previewTimer.stop()
+        previewLoader.clear()
     }
 
     function requestSearch() {
@@ -140,8 +138,7 @@ Item {
     }
 
     function loadPreview() {
-        if (previewSubject && previewSubject.id === previewRecord) return
-        previewTimer.restart()
+        previewLoader.load()
     }
 
     function copyOnly(row) {
@@ -314,9 +311,7 @@ Item {
             pendingMutation = 0
             snippetEditor.busy = false
             editorVisible = false
-            previewRecord = ""
-            preview = ""
-            previewSequence = 0
+            previewLoader.clear()
             resetScratch()
             requestSearch()
             search.forceActiveFocus()
@@ -326,9 +321,7 @@ Item {
         if (message.op === "library-reload") {
             if (message.seq !== pendingReload) return
             pendingReload = 0
-            previewRecord = ""
-            preview = ""
-            previewSequence = 0
+            previewLoader.clear()
             requestSearch()
             status = "Library reloaded from disk."
             return
@@ -336,10 +329,7 @@ Item {
         if (message.op === "clipboard-delete") {
             if (message.seq !== pendingHistoryDelete) return
             pendingHistoryDelete = 0
-            previewTimer.stop()
-            previewRecord = ""
-            preview = ""
-            previewSequence = 0
+            previewLoader.clear()
             pendingRender = null
             resetScratch()
             requestSearch()
@@ -382,10 +372,8 @@ Item {
                 loadPreview()
                 if (openedAt && opened) openLatency = openLatency.concat([Date.now() - openedAt]).slice(-1000)
             } else startSearch() // Coalesce rapid input: at most one stale query runs.
-        } else if (message.op === "preview" && message.seq === previewSequence && previewSubject && previewSubject.id === previewRecord) {
-            preview = message.body
-            previewKeyword = message.keyword || ""
-            previewCreated = message.created || 0
+        } else if (message.op === "preview") {
+            previewLoader.receive(message)
         } else if (message.op === "copy") {
             status = message.message
         } else if (message.op === "paste" && message.seq === pendingPaste) {
@@ -503,7 +491,6 @@ Item {
         return "started (synthetic field changes to frameSwapped proxy)"
     }
 
-    onSelectedChanged: loadPreview()
     onActionQueryChanged: actionSelected = 0
     onExpansionEnabledChanged: resetScratch()
     Keys.onEscapePressed: function(event) { root.close(); event.accepted = true }
@@ -624,6 +611,7 @@ Item {
             pasteHandoff.cancel()
             root.pendingPaste = 0
             root.ready = false
+            previewLoader.clear()
             root.runningSearch = 0
             root.pendingEditor = 0
             root.pendingMutation = 0
@@ -644,14 +632,10 @@ Item {
     }
 
     ListModel { id: displayModel }
-    Timer {
-        id: previewTimer
-        interval: 120
-        onTriggered: {
-            if (!root.previewSubject) { root.preview = ""; root.previewRecord = ""; return }
-            root.previewRecord = root.previewSubject.id
-            root.previewSequence = root.send("preview", {record: root.previewRecord})
-        }
+    SbPreview {
+        id: previewLoader
+        subject: root.previewSubject
+        onRequested: function(record) { previewLoader.sequence = root.send("preview", {record: record}) }
     }
 
     component Caption: Text {
