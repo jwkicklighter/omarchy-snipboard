@@ -1118,6 +1118,7 @@ Item {
                             clip: true
                             ScrollBar.vertical: Scrollbar {}
                             TextArea {
+                                id: previewText
                                 text: root.previewSubject ? root.preview : ""
                                 placeholderText: root.previewSubject ? "" : "Nothing selected"
                                 placeholderTextColor: root.faintText
@@ -1132,6 +1133,34 @@ Item {
                                 padding: 0
                                 rightPadding: Style.space(8)
                                 background: Item {}
+
+                                // Faint glyphs over leading/trailing whitespace. Drawn on top
+                                // rather than inserted so selecting and copying stay exact.
+                                property int layoutTick: 0
+                                onContentHeightChanged: layoutTick++
+                                onContentWidthChanged: layoutTick++
+                                onWidthChanged: layoutTick++
+                                FontMetrics { id: previewMetrics; font: previewText.font }
+                                Repeater {
+                                    model: SbActions.edgeWhitespace(previewText.text, 200)
+                                    Text {
+                                        required property var modelData
+                                        readonly property rect at: (previewText.layoutTick, previewText.positionToRectangle(modelData.at))
+                                        readonly property rect next: (previewText.layoutTick, previewText.positionToRectangle(modelData.at + 1))
+                                        x: at.x
+                                        y: at.y
+                                        width: modelData.glyph !== "↵" && next.y === at.y && next.x > at.x
+                                            ? next.x - at.x : previewMetrics.advanceWidth(" ")
+                                        height: at.height
+                                        text: modelData.glyph
+                                        color: root.faintText
+                                        opacity: 0.7
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                        font.family: Style.font.menuFamily
+                                        font.pixelSize: Style.font.body
+                                    }
+                                }
                             }
                         }
                         Caption {

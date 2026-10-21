@@ -50,6 +50,25 @@ function stats(text) {
     return parts.join(" · ")
 }
 
+// Leading and trailing whitespace the preview marks with faint glyphs, as
+// [{at, glyph}] in text positions. Each run is capped so a wall of blank lines
+// stays cheap; a body that is all whitespace is one leading run.
+function edgeWhitespace(text, limit) {
+    const body = String(text || "")
+    const cap = limit > 0 ? limit : 200
+    const glyphs = {" ": "·", "\t": "→", "\n": "↵", "\u00a0": "°"}
+    const marks = []
+    const mark = function(i) { if (body[i] !== "\r") marks.push({at: i, glyph: glyphs[body[i]] || "·"}) }
+    let start = 0
+    while (start < body.length && start < cap && /\s/.test(body[start])) mark(start++)
+    while (start < body.length && /\s/.test(body[start])) start++
+    let end = body.length
+    const tail = []
+    while (end > start && body.length - end < cap && /\s/.test(body[end - 1])) tail.push(--end)
+    for (let i = tail.length - 1; i >= 0; i--) mark(tail[i])
+    return marks
+}
+
 // Clipboard capture time, Alfred-style: "Today 11:14 AM", "Yesterday …", or a date.
 function when(seconds, now) {
     if (!(seconds > 0)) return ""
