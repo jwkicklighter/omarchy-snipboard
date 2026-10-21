@@ -117,6 +117,26 @@ fn clipboard_callback_capture_search_literal_reuse_and_restart() {
 }
 
 #[test]
+fn clipboard_repeats_promote_one_exact_item() {
+    let directory = data();
+    let mut worker = Worker::launch(directory.path());
+    let text = " \tFirst 🌍\r\n ";
+    let first = worker.request(json!({"op": "clipboard-capture", "text": text}))["record"].clone();
+    let second = worker.request(json!({"op": "clipboard-capture", "text": "second"}))["record"].clone();
+    assert_eq!(worker.request(json!({"op": "search", "kind": "clipboard"}))["rows"][0]["id"], second);
+    assert_eq!(worker.request(json!({"op": "clipboard-capture", "text": text}))["record"], first);
+    let rows = worker.request(json!({"op": "search", "kind": "clipboard"}))["rows"].clone();
+    assert_eq!(rows.as_array().unwrap().len(), 2);
+    assert_eq!(rows[0]["id"], first);
+    assert_eq!(rows[1]["id"], second);
+    worker.shutdown();
+    let mut worker = Worker::launch(directory.path());
+    assert_eq!(worker.request(json!({"op": "search", "kind": "clipboard"}))["rows"], rows);
+    assert_eq!(worker.request(json!({"op": "preview", "record": first}))["body"], text);
+    worker.shutdown();
+}
+
+#[test]
 fn clipboard_delete_is_history_only_and_persists() {
     let directory = data();
     let mut worker = Worker::launch(directory.path());
