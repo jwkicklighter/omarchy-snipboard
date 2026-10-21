@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/jwkicklighter/omarchy-snipboard/compare/v0.3.1...v0.3.2) (2026-10-21)
+
+
+### Bug Fixes
+
+* refresh preview when resolved selection changes ([#7](https://github.com/jwkicklighter/omarchy-snipboard/issues/7)) ([0d30bc0](https://github.com/jwkicklighter/omarchy-snipboard/commit/0d30bc01fcbe0ae87cef745660118a3bcac7aafb))
+
 ## [0.3.1](https://github.com/jwkicklighter/omarchy-snipboard/compare/v0.3.0...v0.3.1) (2026-10-21)
 
 
