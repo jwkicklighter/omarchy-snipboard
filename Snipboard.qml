@@ -72,6 +72,7 @@ Item {
     property int layoutResets: 0
     property string layoutProbeResult: "not run"
     readonly property string sourceDirectory: decodeURIComponent(Qt.resolvedUrl(".").toString().replace(/^file:\/\//, "").replace(/\/$/, ""))
+    readonly property string workerExecutable: root.sourceDirectory + "/bin/linux-x86_64/snipboard-worker"
     readonly property var activeRow: rows.length > selected ? rows[selected] : null
     // The preview follows the action target while the action menu is open.
     readonly property var previewSubject: actionsOpen ? actionTarget : activeRow
@@ -593,7 +594,7 @@ Item {
         // Capture the regular Wayland clipboard, never the primary selection.
         // Each callback frames its stdin as JSON; no text is passed as arguments.
         command: ["setpriv", "--pdeathsig", "TERM", "wl-paste", "--type", "text", "--watch",
-                  "setpriv", "--pdeathsig", "TERM", root.sourceDirectory + "/build/release/snipboard-worker", "--clipboard-event"]
+                  "setpriv", "--pdeathsig", "TERM", root.workerExecutable, "--clipboard-event"]
         stdout: SplitParser {
             onRead: function(line) {
                 try {
@@ -608,7 +609,7 @@ Item {
 
     Process {
         id: helper
-        command: ["setpriv", "--pdeathsig", "TERM", root.sourceDirectory + "/build/release/snipboard-worker"]
+        command: ["setpriv", "--pdeathsig", "TERM", root.workerExecutable]
         workingDirectory: root.sourceDirectory
         stdinEnabled: true
         stdout: SplitParser {
@@ -630,7 +631,7 @@ Item {
             root.pendingHistoryDelete = 0
             snippetEditor.busy = false
             snippetEditor.readOnly = true
-            root.status = "Helper stopped. Invalid storage is preserved; rebuild/reload after resolving errors."
+            root.status = "Helper stopped. Check Linux x86_64/runtime requirements and local storage, then reload. Existing data is preserved."
         }
     }
 

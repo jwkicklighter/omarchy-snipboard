@@ -42,6 +42,28 @@ build/release/snipboard-tools benchmark --rounds 30
 
 Or `make build test validate benchmark`. Cargo's target directory is `build/` (see `.cargo/config.toml`). Tests and benchmarks use disposable owner-only directories under the system temporary directory (`$TMPDIR`, normally `/tmp`), not real prototype data. The validator supplies a temporary `qs` import mapping outside the checkout. Full unsuppressed QML lint output is `${TMPDIR:-/tmp}/snipboard-qmllint.log`.
 
+### Shipping worker versus development builds
+
+Normal Git installations include `bin/linux-x86_64/snipboard-worker` and need no
+Rust toolchain. QML always launches that file, not `build/release/snipboard-worker`.
+Cargo builds/tests continue to use `build/` without silently modifying the tracked
+shipping executable. After worker-source changes, run `make bundle` on an Ubuntu
+24.04 x86_64 build environment and include both files in `bin/linux-x86_64/` in
+the source PR. The helper rejects binaries requiring glibc newer than 2.39, so do
+not substitute an arbitrary current-Arch build for the portable shipping worker.
+For live development, refresh the bundled worker from a compatible build before
+restarting the shell. QML-only changes do not require rebuilding the worker.
+
+`python3 tools/bundle.py` checks executable architecture, libc requirements, version,
+binary checksum, and a fingerprint of all worker/Cargo inputs. CI rejects stale
+bundles, including on ordinary source PRs. These hashes detect stale/corrupt files;
+they are not independent provenance signatures or proof of source/binary equivalence.
+Release Please changes versions automatically; the release workflow rebuilds and
+commits the worker to its PR in a read-only build job followed by a separate
+write-only commit job. Only then does it enable auto-merge. Required PR checks run
+again after that commit. Release archives contain the checked-in executable,
+never an unrelated rebuild from the packaging job.
+
 QML lint currently exits 0 with installed-metadata warnings (shell singleton tokens declared as `QtObject`, Quickshell's runtime PanelWindow factory, and the QProcess enum). Warnings are reported, not called a clean lint pass. Compilation and runtime checks are separate.
 
 `make test` also runs the snippet editor with `qmltestrunner`, an offscreen software renderer, inert theme fixtures, and no shell/plugin activation. It exercises save shortcuts, exact unchanged text/CRLF, dirty-draft dismissal, delete confirmation, read-only/busy gates, and protocol size checks. It does not access the clipboard or synthesize desktop input. The Rust wrapper (`tests/qml.rs`) skips this suite if Qt Quick Test is unavailable. These are not theme-integration or live-shell compatibility tests.

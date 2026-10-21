@@ -1,4 +1,4 @@
-.PHONY: build test validate benchmark package
+.PHONY: build test validate benchmark package bundle
 build:
 	cargo build --release --locked
 test:
@@ -8,5 +8,7 @@ validate: build
 	build/release/snipboard-tools validate
 benchmark: build
 	build/release/snipboard-tools benchmark --rounds 30
-package: build
+package:
 	python3 tools/package.py --smoke-test
+bundle: build
+	python3 tools/bundle.py --write --worker build/release/snipboard-worker

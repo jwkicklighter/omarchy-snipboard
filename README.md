@@ -30,7 +30,9 @@ With search focused, Ctrl/Super+N opens a new snippet, Ctrl/Super+E edits a sele
 
 While the plugin is loaded (including when the picker is closed), `wl-paste --type text --watch` records the regular Wayland clipboard. Exact UTF-8 text up to 64 KiB is accepted; empty, binary/NUL-containing, oversized, and selections marked sensitive by wl-paste are skipped. Sensitive detection depends on the source application's hints, not universal password-field detection. Duplicates move to the top rather than creating extra entries. History persists locally in owner-only `history.local.json`, separately from snippets, with a 1,000-item / 30-day / 4 MiB text budget (also subject to the 8 MiB encoded-file limit). Retention runs on load and capture. Images, pause/pin controls, configurable retention, and importing another clipboard manager's history are not implemented. Unload/disable stops capture; reload retries a failed watcher. This does not claim exclusive capture ownership or modify other clipboard services.
 
-## Build and test
+## Development build and test
+
+For installation, skip to [Install, update, and remove](#install-update-and-remove).
 
 ```sh
 cd ~/Work/omarchy-snipboard
@@ -40,29 +42,22 @@ make validate
 make benchmark
 ```
 
-Uses an installed Rust toolchain (cargo, Rust 1.89 or newer), Quickshell, wl-clipboard, Hyprland's Lua API (`hyprctl eval`), and `setpriv` (util-linux); layout tests link libxkbcommon, offscreen editor/handoff tests use Qt Quick Test's `qmltestrunner`, and compositor script tests use standalone `lua` (those optional suites skip locally if their runner is unavailable, but are required in CI). Python 3.11+ runs the release tests and packaging tools. Nothing installs system packages; the first build downloads the crates pinned in `Cargo.lock`. The helper (search, storage, templates) is a single Rust binary running as a separate persistent process, never inside the shell process. Build it before activation: the overlay launches `build/release/snipboard-worker`.
+Development uses Rust 1.89 or newer; **normal installation does not need Rust or Cargo**. Layout tests link libxkbcommon, offscreen editor/handoff tests use Qt Quick Test's `qmltestrunner`, and compositor script tests use standalone `lua` (those optional suites skip locally if their runner is unavailable, but are required in CI). Python 3.11+ and binutils (`readelf`) run release checks and packaging tools. Nothing installs system packages; development builds download the crates pinned in `Cargo.lock`. The helper (search, storage, templates) is a single Rust binary running as a separate persistent process, never inside the shell process. The overlay launches the checked-in `bin/linux-x86_64/snipboard-worker`; `cargo build` alone does not replace that shipping binary. See [development instructions](docs/development.md) for updating it.
 
 ## Install, update, and remove
 
 Requires **Omarchy Quattro's plugin-capable shell**, its Qt 6/Quickshell runtime,
 Hyprland with `hyprctl eval`, `wl-copy`/`wl-paste` from wl-clipboard, and
 `setpriv` from util-linux. The prebuilt worker supports Linux x86_64 with glibc
-2.39 or newer (built on Ubuntu 24.04); other architectures must build from source.
+2.39 or newer (built on Ubuntu 24.04). Other architectures are not currently supported.
 Install any missing dependencies yourself before enabling the plugin.
 
-**Manual build required:** Omarchy's plugin installer clones source; it does not
-build Rust or download release binaries. Review the code first, then install
-without `--enable`:
+Review the code first, then install and enable with one command. The repository
+includes the compiled worker: **no Rust toolchain, build step, or separate binary
+download is needed**.
 
 ```sh
-omarchy plugin add https://github.com/jwkicklighter/omarchy-snipboard
-# If prompted, choose NOT to enable until after the build.
-cd "$HOME/.config/omarchy/plugins/io.github.jwkicklighter.snipboard"
-cargo build --release --locked
-omarchy plugin validate .
-omarchy plugin enable io.github.jwkicklighter.snipboard
-omarchy restart shell
-omarchy-shell shell summon io.github.jwkicklighter.snipboard '{}'
+omarchy plugin add https://github.com/jwkicklighter/omarchy-snipboard --enable
 ```
 
 Enabling starts recording regular clipboard text, including potentially private
@@ -84,13 +79,14 @@ tar -tzf snipboard-v0.1.0-linux-x86_64.tar.gz
 The bundle contains QML, documentation, license, metadata, and the prebuilt worker
 at its expected path. Extract it into `~/.config/omarchy/plugins/` **only when
 `io.github.jwkicklighter.snipboard/` does not already exist**. Then validate,
-enable, and restart as above. A checksum detects corruption; it is not an
+enable using `omarchy plugin enable io.github.jwkicklighter.snipboard`, and
+restart with `omarchy restart shell`. A checksum detects corruption; it is not an
 independent signature or marketplace security approval.
 
-For a source installation update, first disable the plugin, run
-`omarchy plugin update io.github.jwkicklighter.snipboard`, rebuild with
-`cargo build --release --locked` in its directory, then enable and restart the
-shell. For a bundle installation, disable and move the old installation out of
+For a Git installation update, run
+`omarchy plugin update io.github.jwkicklighter.snipboard`; the updated worker
+arrives with the repository, with no rebuild needed. If the shell retains old
+QML, run `omarchy restart shell`. For a bundle installation, disable and move the old installation out of
 the plugins directory before extracting a replacement; do not overlay versions.
 Omarchy's git update command does not update extracted bundles. Marketplace
 verification covers an exact commit; standard installation/update clones mutable
@@ -113,8 +109,9 @@ For this owner's live development checkout, use the source-preserving
 
 GitHub Actions builds/tests every push and pull request, and checks the latest
 stable Rust weekly alongside the minimum supported Rust. Release Please maintains
-a release PR from Conventional Commits; merging it automatically tags, builds,
-and publishes a tested bundle and SHA-256 checksum to GitHub Releases.
+a release PR from Conventional Commits. Automation builds and commits the worker
+to that PR before enabling auto-merge. Merging it automatically tags, tests,
+and publishes a bundle containing that exact worker and a SHA-256 checksum to GitHub Releases.
 Optional automation opens an exact-commit marketplace update request after a
 release; **marketplace maintainers still must approve publication**.
 See [release and marketplace setup](docs/releases.md) for the initial submission,
