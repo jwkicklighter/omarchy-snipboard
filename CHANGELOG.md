@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/jwkicklighter/omarchy-snipboard/compare/v0.3.0...v0.3.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* reject blank clipboard captures and prune legacy entries ([#5](https://github.com/jwkicklighter/omarchy-snipboard/issues/5)) ([f32afc1](https://github.com/jwkicklighter/omarchy-snipboard/commit/f32afc153fac18ac47bbc9c941a6c1b269cf5658))
+
 ## [0.3.0](https://github.com/jwkicklighter/omarchy-snipboard/compare/v0.2.0...v0.3.0) (2026-10-21)
 
 
