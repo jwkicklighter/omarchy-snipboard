@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/jwkicklighter/omarchy-snipboard/compare/v0.4.0...v0.4.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* change plugin name in Omarchy manifest ([fab1506](https://github.com/jwkicklighter/omarchy-snipboard/commit/fab1506e521ca827b7804a378af2f336e5816960))
+
 ## [0.4.0](https://github.com/jwkicklighter/omarchy-snipboard/compare/v0.3.2...v0.4.0) (2026-10-21)
 
 

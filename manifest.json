@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.jwkicklighter.snipboard",
   "name": "Snipboard",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "author": "Jordan Kicklighter",
   "description": "Local clipboard text history and snippet search with an optional expansion scratchpad",
   "kinds": [
