@@ -55,4 +55,15 @@ TestCase {
         verify(SbActions.when(new Date(2026, 9, 19, 23, 0).getTime() / 1000, now).indexOf("Yesterday ") === 0)
         verify(SbActions.when(new Date(2026, 8, 1, 9, 0).getTime() / 1000, now).indexOf("Sep 1, 2026") === 0)
     }
+
+    function test_edge_whitespace_marks_only_leading_and_trailing_runs() {
+        compare(SbActions.edgeWhitespace("a b", 0), [])
+        compare(SbActions.edgeWhitespace("", 0), [])
+        compare(SbActions.edgeWhitespace(" \ta b \n", 0),
+                [{at: 0, glyph: "·"}, {at: 1, glyph: "→"}, {at: 5, glyph: "·"}, {at: 6, glyph: "↵"}])
+        compare(SbActions.edgeWhitespace("x\r\n", 0), [{at: 2, glyph: "↵"}], "CR has no glyph of its own")
+        compare(SbActions.edgeWhitespace("\u00a0x", 0), [{at: 0, glyph: "°"}])
+        compare(SbActions.edgeWhitespace("   ", 0).length, 3, "all-whitespace is marked once")
+        compare(SbActions.edgeWhitespace("     x     ", 2).map(function(m) { return m.at }), [0, 1, 9, 10])
+    }
 }
