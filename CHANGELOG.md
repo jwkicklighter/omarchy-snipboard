@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/jwkicklighter/omarchy-snipboard/compare/v0.3.2...v0.4.0) (2026-10-21)
+
+
+### Features
+
+* mark leading and trailing whitespace in the preview ([#10](https://github.com/jwkicklighter/omarchy-snipboard/issues/10)) ([7dfd022](https://github.com/jwkicklighter/omarchy-snipboard/commit/7dfd0226d722b4be8384ce26c2477329f1225dc8))
+
 ## [0.3.2](https://github.com/jwkicklighter/omarchy-snipboard/compare/v0.3.1...v0.3.2) (2026-10-21)
 
 
