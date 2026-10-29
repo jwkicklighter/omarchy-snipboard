@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use serde_json::{Map, Value, json};
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::core::{MAX_KEYWORD, Rendered, char_len, render, scratch_match, synthetic_library};
+use crate::core::{MAX_KEYWORD, Rendered, char_len, render, scratch_match};
 use crate::history::History;
 use crate::json::{replace_lone_surrogates, to_ascii_string};
 use crate::search::{Index, Kind, RESULT_LIMIT, Record};
@@ -101,7 +101,7 @@ impl Worker {
             .custom_flags(libc::O_NOFOLLOW)
             .open(store.root.join("worker.lock"))?;
         lock.try_lock().map_err(|error| Error::Io(error.into()))?;
-        let library = store.initialize(&synthetic_library(1000))?.clone();
+        let library = store.initialize(&Library::default())?.clone();
         let usage = if store.usage_path.exists() { read_usage(&store.usage_path)? } else { Usage::new() };
         let history = History::read(&store.root.join("history.local.json"), sys::now())?;
         let mut records = history.records();
@@ -550,12 +550,35 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700)).unwrap();
         let mut worker = Worker::new(directory.path()).unwrap();
+        worker.store.save(crate::core::synthetic_library(1000)).unwrap();
         worker.index = Index::new(crate::core::synthetic_records(&worker.store.library, 10000), &worker.usage);
         (directory, worker)
     }
 
     fn request(worker: &mut Worker, value: Value) -> Map<String, Value> {
         worker.handle(to_ascii_string(&value).as_bytes()).0
+    }
+
+    #[test]
+    fn fresh_install_starts_empty_and_preserves_saved_snippets_on_restart() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("data");
+        let mut worker = Worker::new(&root).unwrap();
+        assert_eq!(worker.store.library, Library::default());
+        assert_eq!(read_library(&worker.store.library_path).unwrap(), Library::default());
+        assert!(worker.index.records().is_empty());
+        drop(worker);
+
+        worker = Worker::new(&root).unwrap();
+        assert!(worker.store.library.snippets.is_empty());
+        assert!(worker.index.records().is_empty());
+        let library = crate::core::synthetic_library(4);
+        worker.store.save(library.clone()).unwrap();
+        drop(worker);
+
+        let worker = Worker::new(&root).unwrap();
+        assert_eq!(worker.store.library, library);
+        assert_eq!(worker.index.records().len(), 4);
     }
 
     #[test]
