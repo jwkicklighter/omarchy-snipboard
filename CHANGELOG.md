@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/jwkicklighter/omarchy-snipboard/compare/v0.4.1...v0.4.2) (2026-10-29)
+
+
+### Bug Fixes
+
+* start fresh installations with no snippets ([#15](https://github.com/jwkicklighter/omarchy-snipboard/issues/15)) ([163dbcb](https://github.com/jwkicklighter/omarchy-snipboard/commit/163dbcbb83b0c5d10ea479387a902215b604dd64))
+
 ## [0.4.1](https://github.com/jwkicklighter/omarchy-snipboard/compare/v0.4.0...v0.4.1) (2026-10-21)
 
 
