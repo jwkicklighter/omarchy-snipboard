@@ -2,163 +2,75 @@
 
 [![Build and test](https://github.com/jwkicklighter/omarchy-snipboard/actions/workflows/ci.yml/badge.svg)](https://github.com/jwkicklighter/omarchy-snipboard/actions/workflows/ci.yml)
 
-A native Omarchy shell prototype for finding and reusing clipboard text and snippets.
+A native clipboard history and snippet picker for the Omarchy shell.
 
-![Snipboard on the Omarchy desktop, showing sample clipboard history and snippets](preview.png)
+![Snipboard with fictional clipboard history and snippets](preview.png)
 
-*Full-screen preview with fictional sample data.*
+- Fuzzy search across clipboard text and saved snippets.
+- Preview, copy, paste, and save clipboard entries as snippets.
+- Create, edit, duplicate, and delete snippets.
+- Keyboard-first controls and colors from your Omarchy theme.
 
-Super+Shift+V opens a compact, centered picker on a transparent shell overlay,
-without painting over or dimming the surrounding desktop. Esc or clicking outside dismisses it. No Hyprland floating-window rule is required.
+**Early-stage prototype:** text only. Images, sync, and global typed expansion
+are not implemented.
 
-The picker is a single search line over a result list, with a preview of the
-selection on the right showing word/character counts and when it was copied.
-Enter pastes, Ctrl+1–9 pastes by position, and Tab cycles the source filter.
-Right arrow (or Ctrl+K) opens the actions for the selected item: copy, save
-as snippet, edit/duplicate, insert into scratchpad, delete snippets or history, and
-more. Colors follow the active Omarchy theme's menu roles.
+## Install
 
-## Status
-
-Working **text-history prototype**, not a first release. Native overlay, system clipboard text capture, combined fuzzy search, separate preview, snippet creation/editing/duplication/deletion, save-result-as-snippet, usage persistence, and opt-in disposable expansion scratchpad are implemented. The manifest validates; the original picker loaded in the installed shell. The new editor and clipboard watcher still need live-shell validation.
-
-Enter/result clicks paste the rendered selection into the previously focused window: the overlay closes, waits 150 ms for focus restoration, then the worker sets the clipboard and uses Hyprland's compositor key-state API, like Omarchy's universal Super+V. Normal apps receive Ctrl+V; apps tagged as terminals receive Ctrl+Shift+V. The latter reads the regular clipboard in Ghostty even when Shift+Insert reads the separate primary selection. Explicit modifier state avoids merging physically held modifiers into a virtual keyboard chord. Clipboard and input failures reopen the picker with an error. Reopening during the focus delay cancels the pending paste. This replaces clipboard contents. `{cursor}` moves the caret back from the end using unmodified Left keys after a short paste-delivery delay; navigation is skipped if the focused window changes. This is best-effort in external apps: slow paste handling, terminal multiline editing, bidirectional text, or app-specific caret rules can differ. Global typed expansion is unavailable: typing a keyword in another app currently has no effect.
-
-Copy and Paste resolve `{clipboard}` from the current regular system clipboard before replacing it, preserving newlines and treating its contents literally. A missing/unreadable text selection reports an error rather than silently inserting an empty value. Copy-only removes `{cursor}` without moving any caret. The disposable scratchpad uses its explicitly labeled test clipboard field instead, and positions `{cursor}` directly in its own plain TextEdit. External application compatibility still needs live validation.
-
-With search focused, Ctrl/Super+N opens a new snippet, Ctrl/Super+E edits a selected snippet, and Ctrl/Super+D duplicates a snippet or saves a clipboard result as a new snippet. Ctrl/Super+Delete immediately deletes a selected clipboard entry from local history, without changing snippets or the system clipboard. For a selected snippet, it opens the editor's deletion confirmation instead; nothing is removed until you click Delete. The actions menu offers **Delete from history** or **Delete snippet…** respectively. Deletion persists across restarts; copying the same text again can record it again. Prefilled drafts require an explicit Save; duplicates clear the keyword and start with independent usage. Clipboard results are reused literally; saving them as snippets escapes recognized variable tokens.
-
-While the plugin is loaded (including when the picker is closed), `wl-paste --type text --watch` records the regular Wayland clipboard. Exact UTF-8 text up to 64 KiB is accepted; empty, binary/NUL-containing, oversized, and selections marked sensitive by wl-paste are skipped. Sensitive detection depends on the source application's hints, not universal password-field detection. Duplicates move to the top rather than creating extra entries. History persists locally in owner-only `history.local.json`, separately from snippets, with a 1,000-item / 30-day / 4 MiB text budget (also subject to the 8 MiB encoded-file limit). Retention runs on load and capture. Images, pause/pin controls, configurable retention, and importing another clipboard manager's history are not implemented. Unload/disable stops capture; reload retries a failed watcher. This does not claim exclusive capture ownership or modify other clipboard services.
-
-## Development build and test
-
-For installation, skip to [Install, update, and remove](#install-update-and-remove).
-
-```sh
-cd ~/Work/omarchy-snipboard
-make build
-make test
-make validate
-make benchmark
-```
-
-Development uses Rust 1.89 or newer; **normal installation does not need Rust or Cargo**. Layout tests link libxkbcommon, offscreen editor/handoff tests use Qt Quick Test's `qmltestrunner`, and compositor script tests use standalone `lua` (those optional suites skip locally if their runner is unavailable, but are required in CI). Python 3.11+ and binutils (`readelf`) run release checks and packaging tools. Nothing installs system packages; development builds download the crates pinned in `Cargo.lock`. The helper (search, storage, templates) is a single Rust binary running as a separate persistent process, never inside the shell process. The overlay installs and launches the independently released worker selected by `engine/release.pin.json`; Cargo builds do not change that pin. See [development instructions](docs/development.md).
-
-## Install, update, and remove
-
-Requires **Omarchy Quattro's plugin-capable shell**, its Qt 6/Quickshell runtime,
-Hyprland with `hyprctl eval`, `wl-copy`/`wl-paste` from wl-clipboard, and
-`setpriv` from util-linux, Python 3.11+, and network access to GitHub Releases
-when the pinned worker is not cached. The prebuilt worker supports Linux x86_64 with glibc
-2.39 or newer (built on Ubuntu 24.04). Other architectures are not currently supported.
-Install any missing dependencies yourself before enabling the plugin.
-
-Review the code first, then install and enable with one command. On first run,
-the plugin **automatically downloads and installs its pinned worker**, verifies
-its committed SHA-256 checksum, and starts it. No Rust toolchain or manual build
-is needed. A cached, verified worker runs offline; it never selects an unpinned
-"latest" release.
+Requires Omarchy Quattro's plugin-capable shell, Linux x86_64 with glibc 2.39+,
+Hyprland with `hyprctl eval`, wl-clipboard, util-linux (`setpriv`), and Python 3.11+.
 
 ```sh
 omarchy plugin add https://github.com/jwkicklighter/omarchy-snipboard --enable
 ```
 
-Enabling starts recording regular clipboard text, including potentially private
-text unless the source marks it sensitive. Data stays in owner-only local files;
-there is no telemetry or upload. Plugins are **unsandboxed code**. The worker's
-process separation is not a security sandbox. No shortcuts or other clipboard
-services are changed by installation; Super+Shift+V is this machine's development
-binding, not an automatically installed global shortcut.
+The plugin automatically downloads its pinned Rust worker from GitHub Releases
+and verifies its SHA-256 checksum. No Rust toolchain or manual build is needed.
+After installation, the cached worker runs offline.
 
-Alternatively, download the versioned Linux x86_64 `.tar.gz` bundle and its
-`.sha256` file from [GitHub Releases](https://github.com/jwkicklighter/omarchy-snipboard/releases).
-In the download directory, verify the checksum (substitute the release version):
+## Use
+
+Open the picker with the command below, or bind it to your preferred shortcut.
+Installation does not add a keybinding.
 
 ```sh
-sha256sum --check snipboard-v0.1.0-linux-x86_64.tar.gz.sha256
-tar -tzf snipboard-v0.1.0-linux-x86_64.tar.gz
+omarchy-shell shell summon io.github.jwkicklighter.snipboard '{}'
 ```
 
-The bundle contains QML, documentation, license, metadata, the worker pin and its
-installer (not a binary). Extract it into `~/.config/omarchy/plugins/` **only when
-`io.github.jwkicklighter.snipboard/` does not already exist**. Then validate,
-enable using `omarchy plugin enable io.github.jwkicklighter.snipboard`, and
-restart with `omarchy restart shell`. A checksum detects corruption; it is not an
-independent signature or marketplace security approval.
+| Key | Action |
+| --- | --- |
+| Enter / Ctrl+1–9 | Paste selected / numbered result |
+| Tab | Switch between all, clipboard, and snippets |
+| Right / Ctrl+K | Open actions |
+| Ctrl+N / E / D | New / edit / duplicate snippet |
+| Esc | Dismiss |
 
-For a Git installation update, run
-`omarchy plugin update io.github.jwkicklighter.snipboard`; if its worker pin
-changes, the verified release is installed on next load, with no rebuild needed. If the shell retains old
-QML, run `omarchy restart shell`. For a bundle installation, disable and move the old installation out of
-the plugins directory before extracting a replacement; do not overlay versions.
-Omarchy's git update command does not update extracted bundles. Marketplace
-verification covers an exact commit; standard installation/update clones mutable
-upstream HEAD, which may differ from that verified snapshot.
+## Privacy
 
-To stop recording and remove a **normal user installation**:
+While enabled, Snipboard records clipboard text even when the picker is closed.
+Source-marked sensitive selections are skipped, but this is **not universal
+password detection**. Data stays local; there is no telemetry or upload.
+Like other Omarchy plugins, Snipboard runs unsandboxed.
+
+History and snippets live in
+`${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-snipboard-prototype/`.
+
+## Update or remove
 
 ```sh
+omarchy plugin update io.github.jwkicklighter.snipboard
+
+# Stop capture and uninstall; saved data is retained.
 omarchy plugin disable io.github.jwkicklighter.snipboard
 omarchy plugin remove io.github.jwkicklighter.snipboard
 ```
 
-Local history and snippets remain under
-`${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-snipboard-prototype/`.
-Remove that directory separately only if you want to permanently erase its data.
-Downloaded workers and `bootstrap.log` remain separately under
-`${XDG_DATA_HOME:-$HOME/.local/share}/omarchy-snipboard/` and can be removed after
-disabling/uninstalling without deleting snippets or history.
-For this owner's live development checkout, use the source-preserving
-[development uninstall procedure](docs/development.md) instead.
+Restart with `omarchy restart shell` if an update retains old UI code.
+For a development checkout, use the [source-preserving uninstall](docs/development.md#disable-and-remove-without-deleting-source-or-data).
 
-## Releases and marketplace
+## Development
 
-GitHub Actions builds/tests every push and pull request, and checks the latest
-stable Rust weekly alongside the minimum supported Rust. Release Please maintains
-a plugin release PR from Conventional Commits. Plugin versions and `vX.Y.Z` tags
-are independent of Rust engine versions and `engine-X.Y.Z` tags. Engine changes
-land in separate PRs, are built into reviewed GitHub Release assets, then get
-pinned with compatible UI in a subsequent PR. Plugin archives contain no binary.
-CI tests both source-built candidates and installation of the published pin.
-Optional automation opens an exact-commit marketplace update request after a
-release; **marketplace maintainers still must approve publication**.
-See [release and marketplace setup](docs/releases.md) for the initial submission,
-token configuration, and release procedure.
-
-## Development installation
-
-At the owner's request, the **entire git repository** is in:
-
-`~/.config/omarchy/plugins/io.github.jwkicklighter.snipboard/`
-
-`~/Work/omarchy-snipboard` is a symlink to that same directory; there is no second source copy. Activation is separate from installation. See [exact install, reload, disable, and unlink commands](docs/development.md).
-
-The overlay was enabled with approval for validation, then **left disabled** after cleanup checks. This development increment does not enable it or change desktop settings. Existing clipboard configuration was not replaced or re-enabled. Backend and offscreen editor tests cover local editing; external application compatibility and the UI latency targets remain open blockers.
-
-Prototype data is separate, in `${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-snipboard-prototype/`, with owner-only files. Other clipboard managers' history, snippets, and services are untouched. Fresh installations start with an empty snippet library and no synthetic clipboard entries. Updates preserve existing snippets.
-
-## Goals
-
-- Work equally well with a keyboard or mouse.
-- Offer a polished, compact interface using the active Omarchy theme colors.
-- Search clipboard history and custom snippets without interrupting your typing.
-- Preview text, images, links, files, and other clipboard content appropriately.
-- Remember snippet usage and favor frequently, recently used matches.
-- Optionally expand a customizable keyword such as `!email` into a snippet while typing in another app.
-- Support date/time, clipboard-text, and cursor-position variables, plus a user-managed sync folder for snippets and portable settings.
-- Keep personal content local and provide clear controls over recording and expansion.
-
-## Project documentation
-
-- [Feature goals and acceptance criteria](docs/feature-goals.md)
-- [Implementation roadmap and open decisions](docs/roadmap.md)
-- [Confirmed product decisions](docs/decisions.md)
-- [Development baseline and compatibility matrix](docs/compatibility.md)
-- [Development and reversible installation](docs/development.md)
-- [Prototype boundary and safety design](docs/prototype.md)
-- [Measured performance and limitations](docs/performance.md)
-
-The feature-goals document describes intended product behavior. The prototype documents distinguish implemented, tested, and blocked behavior. Full sync, import/export UI, image history, rich previews, OCR, QR decoding, and automatic expansion undo are not implemented.
+See [build and development instructions](docs/development.md),
+[engine and plugin releases](docs/releases.md), and the [roadmap](docs/roadmap.md).
 
 ## License
 
