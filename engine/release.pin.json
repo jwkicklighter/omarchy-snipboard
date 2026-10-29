@@ -1,7 +1,7 @@
 {
   "repository": "jwkicklighter/omarchy-snipboard",
-  "version": "0.4.2",
-  "tag": "engine-0.4.2",
+  "version": "0.5.0",
+  "tag": "engine-0.5.0",
   "asset": "snipboard-worker-linux-x86_64",
-  "sha256": "b140a1412b0fad53f0329ba248afd657e213f21cbafe2fb8e31641e9c1905e79"
+  "sha256": "467378070d7e52ef02b6db26aac063a5cddf9c427043d50d83d861ccaf6d5f05"
 }
