@@ -38,6 +38,7 @@ Item {
     readonly property var actionRows: SbActions.filter(SbActions.forRow(actionTarget), actionQuery)
     property bool editorVisible: false
     property int pendingEditor: 0
+    property bool pendingEditorDelete: false
     property int pendingMutation: 0
     property int pendingReload: 0
     property int pendingHistoryDelete: 0
@@ -112,6 +113,7 @@ Item {
         opened = false
         actionsOpen = false
         pendingEditor = 0
+        pendingEditorDelete = false
         expansionEnabled = false
         resetScratch()
         pendingRender = null
@@ -150,6 +152,13 @@ Item {
         row = row || activeRow
         if (!ready || !opened || editorVisible || pendingHistoryDelete || pendingPaste || !row || row.kind !== "clipboard") return
         pendingHistoryDelete = send("clipboard-delete", {record: row.id})
+    }
+
+    function deleteRow(row) {
+        row = row || activeRow
+        if (!ready || !opened || editorVisible || pendingHistoryDelete || pendingPaste || !row) return
+        if (row.kind === "snippet") editSnippet(row.id, false, true)
+        else if (row.kind === "clipboard") deleteHistory(row)
     }
 
     function reloadLibrary() {
@@ -208,7 +217,7 @@ Item {
         else if (action.id === "edit" && target) editSnippet(target.id)
         else if (action.id === "duplicate" && target) editSnippet(target.id, true)
         else if (action.id === "scratch") { scratchVisible = true; insertScratch(target) }
-        else if (action.id === "delete") deleteHistory(target)
+        else if (action.id === "delete") deleteRow(target)
         else if (action.id === "new") editSnippet("")
         else if (action.id === "toggle-scratch") { scratchVisible = !scratchVisible; resetScratch() }
         else if (action.id === "reload") reloadLibrary()
@@ -221,9 +230,10 @@ Item {
         return "󰅌"
     }
 
-    function editSnippet(record, draft) {
+    function editSnippet(record, draft, deleting) {
         if (!ready || editorVisible || pendingEditor || pendingMutation || pendingReload) return
         pendingEditor = send(draft ? "snippet-draft" : "snippet-get", {record: record})
+        pendingEditorDelete = !!deleting
         expansionEnabled = false
         resetScratch()
         pendingRender = null
@@ -290,7 +300,7 @@ Item {
                 snippetEditor.error = message.error
                 if (message.readonly !== undefined) snippetEditor.readOnly = message.readonly
             }
-            if (message.seq === pendingEditor) pendingEditor = 0
+            if (message.seq === pendingEditor) { pendingEditor = 0; pendingEditorDelete = false }
             if (message.seq === pendingReload) pendingReload = 0
             if (message.seq === pendingHistoryDelete) pendingHistoryDelete = 0
             if (message.op === "search") {
@@ -303,7 +313,8 @@ Item {
             if (message.seq !== pendingEditor || !opened) return
             pendingEditor = 0
             editorVisible = true
-            snippetEditor.load(message.snippet, message.revision, message.readonly, message.op === "snippet-draft")
+            snippetEditor.load(message.snippet, message.revision, message.readonly, message.op === "snippet-draft", pendingEditorDelete)
+            pendingEditorDelete = false
             return
         }
         if (message.op === "snippet-save" || message.op === "snippet-delete") {
@@ -614,6 +625,7 @@ Item {
             previewLoader.clear()
             root.runningSearch = 0
             root.pendingEditor = 0
+            root.pendingEditorDelete = false
             root.pendingMutation = 0
             root.pendingReload = 0
             root.pendingHistoryDelete = 0
@@ -899,7 +911,7 @@ Item {
                                 } else if (event.key === Qt.Key_D && command) {
                                     if (root.activeRow && root.activeRow.kind === "snippet") root.editSnippet(root.activeRow.id, true)
                                 } else if (event.key === Qt.Key_Delete && command) {
-                                    root.deleteHistory()
+                                    root.deleteRow()
                                 } else if (event.key === Qt.Key_C && command) {
                                     if (selectedText.length) { copy(); event.accepted = true; return }
                                     root.copyOnly()

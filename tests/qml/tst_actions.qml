@@ -15,10 +15,14 @@ TestCase {
         verify(list.indexOf("edit") < 0, "clipboard text is not an editable snippet")
     }
 
-    function test_snippet_row_offers_editing_not_deletion() {
+    function test_snippet_row_offers_editing_and_confirmed_deletion() {
         const list = ids(SbActions.forRow({id: "snippet-1", kind: "snippet"}))
         verify(list.indexOf("edit") >= 0)
-        verify(list.indexOf("delete") < 0, "snippets are deleted from the editor with confirmation")
+        verify(list.indexOf("delete") >= 0)
+        const action = SbActions.filter(SbActions.forRow({id: "snippet-1", kind: "snippet"}), "delete")[0]
+        compare(action.label, "Delete snippet…")
+        compare(action.keys, ["Ctrl", "Del"])
+        verify(action.danger)
     }
 
     function test_no_row_offers_only_general_actions() {

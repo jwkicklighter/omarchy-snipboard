@@ -17,6 +17,8 @@ function forRow(row) {
         list.push({id: "scratch", label: "Insert into scratchpad", glyph: "󰁅", keys: [], detail: "Render into the disposable scratchpad"})
         if (row.kind === "clipboard")
             list.push({id: "delete", label: "Delete from history", glyph: "󰆴", keys: ["Ctrl", "Del"], danger: true, detail: "Remove from history; the system clipboard is unchanged"})
+        else if (row.kind === "snippet")
+            list.push({id: "delete", label: "Delete snippet…", glyph: "󰆴", keys: ["Ctrl", "Del"], danger: true, detail: "Confirm removal of this saved snippet from the library"})
     }
     list.push({id: "new", label: "New snippet", glyph: "󰐕", keys: ["Ctrl", "N"], detail: "Create an empty snippet"})
     list.push({id: "toggle-scratch", label: "Toggle scratchpad", glyph: "󰏫", keys: [], detail: "Swap the preview for the expansion scratchpad"})
