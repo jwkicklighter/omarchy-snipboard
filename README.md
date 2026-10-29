@@ -51,7 +51,13 @@ Source-marked sensitive selections are skipped, but this is **not universal
 password detection**. Data stays local; there is no telemetry or upload.
 Like other Omarchy plugins, Snipboard runs unsandboxed.
 
-History and snippets live in
+Snippets live in
+`${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/extensions/io.github.jwkicklighter.snipboard/library.json`
+so they can be synced with your configuration. Existing installations migrate
+their snippet file automatically on worker startup. If the destination already
+exists, it takes precedence and the old file is retained untouched.
+
+Clipboard history and usage remain machine-local in
 `${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-snipboard-prototype/`.
 
 ## Update or remove

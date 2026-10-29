@@ -86,6 +86,10 @@ pub struct Worker {
 
 impl Worker {
     pub fn new(root: &Path) -> Result<Self> {
+        Self::with_library_root(root, root)
+    }
+
+    pub fn with_library_root(root: &Path, library_root: &Path) -> Result<Self> {
         if !root.is_absolute() || root.components().any(|c| c == Component::ParentDir) {
             return Err(Error::Invalid("prototype data must be outside source at an absolute path"));
         }
@@ -93,7 +97,7 @@ impl Worker {
         if source_roots().iter().any(|source| resolved.starts_with(source)) {
             return Err(Error::Invalid("prototype data must be outside source at an absolute path"));
         }
-        let mut store = Store::new(root)?;
+        let mut store = Store::with_library_root(root, library_root)?;
         let lock = OpenOptions::new()
             .append(true)
             .create(true)
@@ -101,6 +105,7 @@ impl Worker {
             .custom_flags(libc::O_NOFOLLOW)
             .open(store.root.join("worker.lock"))?;
         lock.try_lock().map_err(|error| Error::Io(error.into()))?;
+        store.migrate_library()?;
         let library = store.initialize(&Library::default())?.clone();
         let usage = if store.usage_path.exists() { read_usage(&store.usage_path)? } else { Usage::new() };
         let history = History::read(&store.root.join("history.local.json"), sys::now())?;
@@ -506,7 +511,11 @@ fn handle_signals(worker: Arc<Mutex<Worker>>) {
 }
 
 pub fn serve(root: &Path) -> Result<()> {
-    let worker = Arc::new(Mutex::new(Worker::new(root)?));
+    serve_with_library_root(root, root)
+}
+
+pub fn serve_with_library_root(root: &Path, library_root: &Path) -> Result<()> {
+    let worker = Arc::new(Mutex::new(Worker::with_library_root(root, library_root)?));
     handle_signals(Arc::clone(&worker));
     let mut stdout = io::stdout().lock();
     let ready = {

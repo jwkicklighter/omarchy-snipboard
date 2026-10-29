@@ -64,7 +64,13 @@ Safety for an external adapter remains a prerequisite: verified focus identity, 
 
 ## Data and eventual sync boundary
 
-Prototype-only root: `${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-snipboard-prototype/`.
+Machine-local root: `${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-snipboard-prototype/`.
+Portable snippet root: `${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/extensions/io.github.jwkicklighter.snipboard/`.
+On startup, the worker moves the legacy `library.json` from the local root to
+the portable root if no destination exists, preserving its exact bytes and
+owner-only permissions. A pre-existing destination wins; the legacy file is
+retained for manual review. History, usage, initialization marker, and worker lock
+remain in the local root. An explicit `--data` keeps all files in that directory.
 
 | File | Boundary |
 | --- | --- |
