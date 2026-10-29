@@ -38,6 +38,7 @@ Item {
     readonly property var actionRows: SbActions.filter(SbActions.forRow(actionTarget), actionQuery)
     property bool editorVisible: false
     property int pendingEditor: 0
+    property bool pendingEditorDelete: false
     property int pendingMutation: 0
     property int pendingReload: 0
     property int pendingHistoryDelete: 0
@@ -70,7 +71,7 @@ Item {
     property int layoutResets: 0
     property string layoutProbeResult: "not run"
     readonly property string sourceDirectory: decodeURIComponent(Qt.resolvedUrl(".").toString().replace(/^file:\/\//, "").replace(/\/$/, ""))
-    readonly property string workerExecutable: root.sourceDirectory + "/bin/linux-x86_64/snipboard-worker"
+    property string workerExecutable: ""
     readonly property var activeRow: rows.length > selected ? rows[selected] : null
     // The preview follows the action target while the action menu is open.
     readonly property var previewSubject: actionsOpen ? actionTarget : activeRow
@@ -112,6 +113,7 @@ Item {
         opened = false
         actionsOpen = false
         pendingEditor = 0
+        pendingEditorDelete = false
         expansionEnabled = false
         resetScratch()
         pendingRender = null
@@ -150,6 +152,13 @@ Item {
         row = row || activeRow
         if (!ready || !opened || editorVisible || pendingHistoryDelete || pendingPaste || !row || row.kind !== "clipboard") return
         pendingHistoryDelete = send("clipboard-delete", {record: row.id})
+    }
+
+    function deleteRow(row) {
+        row = row || activeRow
+        if (!ready || !opened || editorVisible || pendingHistoryDelete || pendingPaste || !row) return
+        if (row.kind === "snippet") editSnippet(row.id, false, true)
+        else if (row.kind === "clipboard") deleteHistory(row)
     }
 
     function reloadLibrary() {
@@ -208,7 +217,7 @@ Item {
         else if (action.id === "edit" && target) editSnippet(target.id)
         else if (action.id === "duplicate" && target) editSnippet(target.id, true)
         else if (action.id === "scratch") { scratchVisible = true; insertScratch(target) }
-        else if (action.id === "delete") deleteHistory(target)
+        else if (action.id === "delete") deleteRow(target)
         else if (action.id === "new") editSnippet("")
         else if (action.id === "toggle-scratch") { scratchVisible = !scratchVisible; resetScratch() }
         else if (action.id === "reload") reloadLibrary()
@@ -221,9 +230,10 @@ Item {
         return "󰅌"
     }
 
-    function editSnippet(record, draft) {
+    function editSnippet(record, draft, deleting) {
         if (!ready || editorVisible || pendingEditor || pendingMutation || pendingReload) return
         pendingEditor = send(draft ? "snippet-draft" : "snippet-get", {record: record})
+        pendingEditorDelete = !!deleting
         expansionEnabled = false
         resetScratch()
         pendingRender = null
@@ -290,7 +300,7 @@ Item {
                 snippetEditor.error = message.error
                 if (message.readonly !== undefined) snippetEditor.readOnly = message.readonly
             }
-            if (message.seq === pendingEditor) pendingEditor = 0
+            if (message.seq === pendingEditor) { pendingEditor = 0; pendingEditorDelete = false }
             if (message.seq === pendingReload) pendingReload = 0
             if (message.seq === pendingHistoryDelete) pendingHistoryDelete = 0
             if (message.op === "search") {
@@ -303,7 +313,8 @@ Item {
             if (message.seq !== pendingEditor || !opened) return
             pendingEditor = 0
             editorVisible = true
-            snippetEditor.load(message.snippet, message.revision, message.readonly, message.op === "snippet-draft")
+            snippetEditor.load(message.snippet, message.revision, message.readonly, message.op === "snippet-draft", pendingEditorDelete)
+            pendingEditorDelete = false
             return
         }
         if (message.op === "snippet-save" || message.op === "snippet-delete") {
@@ -494,9 +505,10 @@ Item {
     onActionQueryChanged: actionSelected = 0
     onExpansionEnabledChanged: resetScratch()
     Keys.onEscapePressed: function(event) { root.close(); event.accepted = true }
-    Component.onCompleted: helper.running = true
+    Component.onCompleted: workerBootstrap.running = true
     Component.onDestruction: {
         expansionEnabled = false
+        workerBootstrap.running = false
         clipboardWatcher.running = false
         helper.running = false
     }
@@ -577,6 +589,17 @@ Item {
     }
 
     Process {
+        id: workerBootstrap
+        command: ["setpriv", "--pdeathsig", "TERM", "python3", root.sourceDirectory + "/tools/worker_runtime.py"]
+        stdout: SplitParser { onRead: function(line) { root.workerExecutable = line } }
+        stderr: SplitParser { onRead: function(line) { root.status = line } }
+        onExited: function(code) {
+            if (code === 0 && root.workerExecutable.length) helper.running = true
+            else root.status = "Worker installation failed. Check ~/.local/share/omarchy-snipboard/bootstrap.log (or XDG_DATA_HOME), then reload the plugin."
+        }
+    }
+
+    Process {
         id: clipboardWatcher
         // Capture the regular Wayland clipboard, never the primary selection.
         // Each callback frames its stdin as JSON; no text is passed as arguments.
@@ -614,6 +637,7 @@ Item {
             previewLoader.clear()
             root.runningSearch = 0
             root.pendingEditor = 0
+            root.pendingEditorDelete = false
             root.pendingMutation = 0
             root.pendingReload = 0
             root.pendingHistoryDelete = 0
@@ -899,7 +923,7 @@ Item {
                                 } else if (event.key === Qt.Key_D && command) {
                                     if (root.activeRow && root.activeRow.kind === "snippet") root.editSnippet(root.activeRow.id, true)
                                 } else if (event.key === Qt.Key_Delete && command) {
-                                    root.deleteHistory()
+                                    root.deleteRow()
                                 } else if (event.key === Qt.Key_C && command) {
                                     if (selectedText.length) { copy(); event.accepted = true; return }
                                     root.copyOnly()

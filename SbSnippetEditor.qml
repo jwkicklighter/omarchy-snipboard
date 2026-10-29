@@ -57,21 +57,21 @@ ColumnLayout {
                        notes: notesInput.text === loaded.notes ? original.notes : notesInput.text})
     }
 
-    function load(snippet, version, locked, draft) {
+    function load(snippet, version, locked, draft, deleting) {
         original = snippet
         unsavedDraft = !!draft
         revision = version
         readOnly = locked
         busy = false
         error = ""
-        confirmDelete = false
+        confirmDelete = !!deleting && !locked && !draft && snippet.id.length > 0
         confirmDiscard = false
         nameInput.text = snippet.name
         bodyInput.text = snippet.body
         keywordInput.text = snippet.keyword
         notesInput.text = snippet.notes
         loaded = {name: nameInput.text, body: bodyInput.text, keyword: keywordInput.text, notes: notesInput.text}
-        Qt.callLater(function() { nameInput.forceActiveFocus() })
+        Qt.callLater(function() { if (editor.confirmDelete) keepSnippet.forceActiveFocus(); else nameInput.forceActiveFocus() })
     }
 
     function dismiss(closePanel) {
@@ -235,7 +235,7 @@ ColumnLayout {
         visible: editor.confirmDelete
         urgent: true
         Label { Layout.fillWidth: true; text: "Delete this saved snippet? This cannot be undone."; elide: Text.ElideRight }
-        SbButton { text: "Keep snippet"; onClicked: editor.confirmDelete = false }
+        SbButton { id: keepSnippet; objectName: "keepSnippet"; text: "Keep snippet"; onClicked: { editor.confirmDelete = false; nameInput.forceActiveFocus() } }
         SbButton { objectName: "confirmDelete"; text: "Delete"; glyph: "󰆴"; danger: true; enabled: !editor.busy && !editor.readOnly; onClicked: editor.deleteRequested() }
     }
 

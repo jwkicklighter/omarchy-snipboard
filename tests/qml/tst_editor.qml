@@ -100,6 +100,39 @@ TestCase {
         compare(deletes.count, 1)
     }
 
+    function test_picker_delete_requires_explicit_confirmation() {
+        editor.load(fixture(), "delete-revision", false, false, true)
+        wait(0)
+        verify(editor.confirmDelete)
+        compare(editor.original.id, fixture().id)
+        compare(editor.revision, "delete-revision")
+        compare(deletes.count, 0)
+        editor.submit()
+        compare(saves.count, 0)
+        tryVerify(function() { return field("keepSnippet").activeFocus })
+        waitForRendering(editor)
+        mouseClick(field("keepSnippet"))
+        verify(!editor.confirmDelete)
+        compare(deletes.count, 0)
+        editor.load(fixture(), "delete-revision", false, false, true)
+        waitForRendering(editor)
+        mouseClick(field("confirmDelete"))
+        compare(deletes.count, 1)
+    }
+
+    function test_picker_delete_cannot_confirm_readonly_or_drafts() {
+        editor.load(fixture(), "revision", true, false, true)
+        verify(!editor.confirmDelete)
+        verify(!field("deleteSnippet").enabled)
+        editor.load({id: "", name: "Draft", body: "", keyword: "", notes: ""}, "revision", false, true, true)
+        verify(!editor.confirmDelete)
+        verify(!field("deleteSnippet").visible)
+        editor.load(fixture(), "revision", false, false, true)
+        editor.load(fixture(), "revision", false)
+        verify(!editor.confirmDelete, "ordinary edits must not inherit a delete request")
+        compare(deletes.count, 0)
+    }
+
     function test_bounds_before_protocol_and_unicode_counts() {
         // Avoid benchmarking line layout while checking protocol bounds.
         field("snippetBody").wrapMode = TextEdit.NoWrap

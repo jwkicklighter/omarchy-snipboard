@@ -44,25 +44,22 @@ Or `make build test validate benchmark`. Cargo's target directory is `build/` (s
 
 ### Shipping worker versus development builds
 
-Normal Git installations include `bin/linux-x86_64/snipboard-worker` and need no
-Rust toolchain. QML always launches that file, not `build/release/snipboard-worker`.
-Cargo builds/tests continue to use `build/` without silently modifying the tracked
-shipping executable. After worker-source changes, run `make bundle` on an Ubuntu
-24.04 x86_64 build environment and include both files in `bin/linux-x86_64/` in
-the source PR. The helper rejects binaries requiring glibc newer than 2.39, so do
-not substitute an arbitrary current-Arch build for the portable shipping worker.
-For live development, refresh the bundled worker from a compatible build before
-restarting the shell. QML-only changes do not require rebuilding the worker.
+Normal Git installations contain no Rust binary and need no Rust toolchain.
+QML installs the committed `engine/release.pin.json` into the user's XDG data
+directory before starting the worker. Cargo builds/tests use `build/` and do not
+override that pin. Smoke-test a candidate with:
 
-`python3 tools/bundle.py` checks executable architecture, libc requirements, version,
-binary checksum, and a fingerprint of all worker/Cargo inputs. CI rejects stale
-bundles, including on ordinary source PRs. These hashes detect stale/corrupt files;
-they are not independent provenance signatures or proof of source/binary equivalence.
-Release Please changes versions automatically; the release workflow rebuilds and
-commits the worker to its PR in a read-only build job followed by a separate
-write-only commit job. Only then does it enable auto-merge. Required PR checks run
-again after that commit. Release archives contain the checked-in executable,
-never an unrelated rebuild from the packaging job.
+```sh
+python3 tools/worker_smoke.py build/release/snipboard-worker
+```
+
+Use disposable `--data` directories for candidate protocol tests, never live
+state. Do not replace a cached executable with a local build: bootstrap rejects
+checksum mismatches. UI integration must use the published engine. Engine source,
+publication, and compatible UI/pin are separate PR stages; see
+[releases.md](releases.md). `make package` smoke-tests a fresh extracted plugin's
+download/install and wire handshake with disposable state; it needs GitHub access.
+Python unit tests mock downloads and never contact GitHub or read the clipboard.
 
 QML lint currently exits 0 with installed-metadata warnings (shell singleton tokens declared as `QtObject`, Quickshell's runtime PanelWindow factory, and the QProcess enum). Warnings are reported, not called a clean lint pass. Compilation and runtime checks are separate.
 
@@ -85,7 +82,7 @@ omarchy-shell shell summon io.github.jwkicklighter.snipboard '{}'
 omarchy-shell shell hide io.github.jwkicklighter.snipboard
 ```
 
-Rescan is asynchronous; an immediate summon can briefly fail while the host rebuilds its plugin catalog. The shell normally watches QML changes. **Observed loader limitation:** rescan/hot reload can retain an old component at the same URL. Missing new IPC methods demonstrated this. A shell restart loaded the changed code; never automate a restart without approval:
+Rescan is asynchronous; an immediate summon can briefly fail while the host rebuilds its plugin catalog. The shell normally watches QML changes. **Observed loader limitation:** rescan/hot reload can retain an old component at the same URL. Missing new IPC methods demonstrated this. A shell restart loaded the changed code. The owner has granted standing restart permission for this project (see `AGENTS.md`):
 
 ```sh
 omarchy restart shell
