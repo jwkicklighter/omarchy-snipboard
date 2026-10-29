@@ -71,7 +71,7 @@ Item {
     property int layoutResets: 0
     property string layoutProbeResult: "not run"
     readonly property string sourceDirectory: decodeURIComponent(Qt.resolvedUrl(".").toString().replace(/^file:\/\//, "").replace(/\/$/, ""))
-    readonly property string workerExecutable: root.sourceDirectory + "/bin/linux-x86_64/snipboard-worker"
+    property string workerExecutable: ""
     readonly property var activeRow: rows.length > selected ? rows[selected] : null
     // The preview follows the action target while the action menu is open.
     readonly property var previewSubject: actionsOpen ? actionTarget : activeRow
@@ -505,9 +505,10 @@ Item {
     onActionQueryChanged: actionSelected = 0
     onExpansionEnabledChanged: resetScratch()
     Keys.onEscapePressed: function(event) { root.close(); event.accepted = true }
-    Component.onCompleted: helper.running = true
+    Component.onCompleted: workerBootstrap.running = true
     Component.onDestruction: {
         expansionEnabled = false
+        workerBootstrap.running = false
         clipboardWatcher.running = false
         helper.running = false
     }
@@ -584,6 +585,17 @@ Item {
             }
             search.text = queries[root.benchmarkIndex++ % queries.length]
             search.forceActiveFocus()
+        }
+    }
+
+    Process {
+        id: workerBootstrap
+        command: ["setpriv", "--pdeathsig", "TERM", "python3", root.sourceDirectory + "/tools/worker_runtime.py"]
+        stdout: SplitParser { onRead: function(line) { root.workerExecutable = line } }
+        stderr: SplitParser { onRead: function(line) { root.status = line } }
+        onExited: function(code) {
+            if (code === 0 && root.workerExecutable.length) helper.running = true
+            else root.status = "Worker installation failed. Check ~/.local/share/omarchy-snipboard/bootstrap.log (or XDG_DATA_HOME), then reload the plugin."
         }
     }
 

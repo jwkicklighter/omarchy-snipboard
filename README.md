@@ -42,19 +42,22 @@ make validate
 make benchmark
 ```
 
-Development uses Rust 1.89 or newer; **normal installation does not need Rust or Cargo**. Layout tests link libxkbcommon, offscreen editor/handoff tests use Qt Quick Test's `qmltestrunner`, and compositor script tests use standalone `lua` (those optional suites skip locally if their runner is unavailable, but are required in CI). Python 3.11+ and binutils (`readelf`) run release checks and packaging tools. Nothing installs system packages; development builds download the crates pinned in `Cargo.lock`. The helper (search, storage, templates) is a single Rust binary running as a separate persistent process, never inside the shell process. The overlay launches the checked-in `bin/linux-x86_64/snipboard-worker`; `cargo build` alone does not replace that shipping binary. See [development instructions](docs/development.md) for updating it.
+Development uses Rust 1.89 or newer; **normal installation does not need Rust or Cargo**. Layout tests link libxkbcommon, offscreen editor/handoff tests use Qt Quick Test's `qmltestrunner`, and compositor script tests use standalone `lua` (those optional suites skip locally if their runner is unavailable, but are required in CI). Python 3.11+ and binutils (`readelf`) run release checks and packaging tools. Nothing installs system packages; development builds download the crates pinned in `Cargo.lock`. The helper (search, storage, templates) is a single Rust binary running as a separate persistent process, never inside the shell process. The overlay installs and launches the independently released worker selected by `engine/release.pin.json`; Cargo builds do not change that pin. See [development instructions](docs/development.md).
 
 ## Install, update, and remove
 
 Requires **Omarchy Quattro's plugin-capable shell**, its Qt 6/Quickshell runtime,
 Hyprland with `hyprctl eval`, `wl-copy`/`wl-paste` from wl-clipboard, and
-`setpriv` from util-linux. The prebuilt worker supports Linux x86_64 with glibc
+`setpriv` from util-linux, Python 3.11+, and network access to GitHub Releases
+when the pinned worker is not cached. The prebuilt worker supports Linux x86_64 with glibc
 2.39 or newer (built on Ubuntu 24.04). Other architectures are not currently supported.
 Install any missing dependencies yourself before enabling the plugin.
 
-Review the code first, then install and enable with one command. The repository
-includes the compiled worker: **no Rust toolchain, build step, or separate binary
-download is needed**.
+Review the code first, then install and enable with one command. On first run,
+the plugin **automatically downloads and installs its pinned worker**, verifies
+its committed SHA-256 checksum, and starts it. No Rust toolchain or manual build
+is needed. A cached, verified worker runs offline; it never selects an unpinned
+"latest" release.
 
 ```sh
 omarchy plugin add https://github.com/jwkicklighter/omarchy-snipboard --enable
@@ -76,16 +79,16 @@ sha256sum --check snipboard-v0.1.0-linux-x86_64.tar.gz.sha256
 tar -tzf snipboard-v0.1.0-linux-x86_64.tar.gz
 ```
 
-The bundle contains QML, documentation, license, metadata, and the prebuilt worker
-at its expected path. Extract it into `~/.config/omarchy/plugins/` **only when
+The bundle contains QML, documentation, license, metadata, the worker pin and its
+installer (not a binary). Extract it into `~/.config/omarchy/plugins/` **only when
 `io.github.jwkicklighter.snipboard/` does not already exist**. Then validate,
 enable using `omarchy plugin enable io.github.jwkicklighter.snipboard`, and
 restart with `omarchy restart shell`. A checksum detects corruption; it is not an
 independent signature or marketplace security approval.
 
 For a Git installation update, run
-`omarchy plugin update io.github.jwkicklighter.snipboard`; the updated worker
-arrives with the repository, with no rebuild needed. If the shell retains old
+`omarchy plugin update io.github.jwkicklighter.snipboard`; if its worker pin
+changes, the verified release is installed on next load, with no rebuild needed. If the shell retains old
 QML, run `omarchy restart shell`. For a bundle installation, disable and move the old installation out of
 the plugins directory before extracting a replacement; do not overlay versions.
 Omarchy's git update command does not update extracted bundles. Marketplace
@@ -102,6 +105,9 @@ omarchy plugin remove io.github.jwkicklighter.snipboard
 Local history and snippets remain under
 `${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-snipboard-prototype/`.
 Remove that directory separately only if you want to permanently erase its data.
+Downloaded workers and `bootstrap.log` remain separately under
+`${XDG_DATA_HOME:-$HOME/.local/share}/omarchy-snipboard/` and can be removed after
+disabling/uninstalling without deleting snippets or history.
 For this owner's live development checkout, use the source-preserving
 [development uninstall procedure](docs/development.md) instead.
 
@@ -109,9 +115,11 @@ For this owner's live development checkout, use the source-preserving
 
 GitHub Actions builds/tests every push and pull request, and checks the latest
 stable Rust weekly alongside the minimum supported Rust. Release Please maintains
-a release PR from Conventional Commits. Automation builds and commits the worker
-to that PR before enabling auto-merge. Merging it automatically tags, tests,
-and publishes a bundle containing that exact worker and a SHA-256 checksum to GitHub Releases.
+a plugin release PR from Conventional Commits. Plugin versions and `vX.Y.Z` tags
+are independent of Rust engine versions and `engine-X.Y.Z` tags. Engine changes
+land in separate PRs, are built into reviewed GitHub Release assets, then get
+pinned with compatible UI in a subsequent PR. Plugin archives contain no binary.
+CI tests both source-built candidates and installation of the published pin.
 Optional automation opens an exact-commit marketplace update request after a
 release; **marketplace maintainers still must approve publication**.
 See [release and marketplace setup](docs/releases.md) for the initial submission,

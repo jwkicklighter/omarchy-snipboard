@@ -44,8 +44,9 @@ https://github.com/{REPOSITORY}
 <!-- snipboard-release:{commit} -->
 
 Release: https://github.com/{REPOSITORY}/releases/tag/{tag}
-The repository includes the Linux x86_64 worker. Standard `omarchy plugin add`
-with `--enable` needs no Rust toolchain, build step, or first-run binary download.
+The plugin automatically downloads its pinned, SHA-256-verified Linux x86_64 worker
+on first enable. Standard `omarchy plugin add` with `--enable` needs no Rust toolchain
+or build step; network access to GitHub Releases is required for a missing pin.
 Runtime dependencies and platform requirements are documented in the README.
 """
 

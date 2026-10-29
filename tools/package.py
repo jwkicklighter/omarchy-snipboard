@@ -8,11 +8,9 @@ import os
 from pathlib import Path
 import platform
 import re
-import select
 import subprocess
 import tarfile
 import tempfile
-import tomllib
 
 ROOT = Path(__file__).resolve().parent.parent
 PLUGIN_ID = "io.github.jwkicklighter.snipboard"
@@ -20,16 +18,13 @@ PLUGIN_ID = "io.github.jwkicklighter.snipboard"
 
 def check_versions(root=ROOT, tag=None):
     manifest = json.loads((root / "manifest.json").read_text())
-    cargo = tomllib.loads((root / "Cargo.toml").read_text())["package"]
-    lock = tomllib.loads((root / "Cargo.lock").read_text())
-    locked = next(p for p in lock["package"] if p["name"] == cargo["name"])
     version = manifest["version"]
+    if (root / ".plugin-version").read_text().strip() != version:
+        raise ValueError("manifest.json and .plugin-version must match")
     if manifest["id"] != PLUGIN_ID:
         raise ValueError("Plugin ID must remain stable")
     if not re.fullmatch(r"\d+\.\d+\.\d+", version):
         raise ValueError("Release version must be X.Y.Z")
-    if cargo["version"] != version or locked["version"] != version:
-        raise ValueError("manifest.json, Cargo.toml and Cargo.lock versions must match")
     if tag is not None and tag != f"v{version}":
         raise ValueError(f"Expected tag v{version}, got {tag}")
     return version
@@ -38,16 +33,14 @@ def check_versions(root=ROOT, tag=None):
 def release_files(root=ROOT):
     # An explicit allowlist prevents accidental publication of personal/local data.
     names = [
-        "manifest.json", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE", "preview.png",
+        "manifest.json", ".plugin-version", "README.md", "LICENSE", "preview.png",
         "Snipboard.qml", "SbActions.js", "SbButton.qml", "SbPasteHandoff.qml", "SbPreview.qml",
-        "SbSnippetEditor.qml", "bin/linux-x86_64/snipboard-worker", "bin/linux-x86_64/worker.json",
+        "SbSnippetEditor.qml", "engine/release.pin.json", "tools/worker_runtime.py",
     ]
     files = [root / name for name in names] + sorted((root / "docs").glob("*.md"))
     for path in files:
         if path.is_symlink() or not path.is_file():
             raise ValueError(f"Missing or unsafe release file: {path}")
-    if not os.access(root / "bin/linux-x86_64/snipboard-worker", os.X_OK):
-        raise ValueError("Missing executable bundled worker")
     return files
 
 
@@ -57,26 +50,14 @@ def smoke_test(archive):
         base = Path(directory)
         with tarfile.open(archive) as bundle:
             bundle.extractall(base, filter="data")
-        worker = base / PLUGIN_ID / "bin/linux-x86_64/snipboard-worker"
-        process = subprocess.Popen(
-            [str(worker), "--data", str(base / "data")],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        )
-        try:
-            if not select.select([process.stdout], [], [], 15)[0]:
-                raise ValueError("Packaged worker timed out before ready")
-            ready = json.loads(process.stdout.readline())
-            if ready.get("op") != "ready":
-                raise ValueError(f"Packaged worker did not report ready: {ready.get('op')}")
-            process.stdin.close()
-            if process.wait(timeout=15) != 0:
-                raise ValueError("Packaged worker failed on shutdown")
-        finally:
-            if process.poll() is None:
-                process.kill()
-                process.wait()
-            process.stdout.close()
-            process.stderr.close()
+        # Exercise the exact shipped bootstrap/pin, never a source-built candidate.
+        environment = dict(os.environ, XDG_DATA_HOME=str(base / "installed"))
+        worker = subprocess.check_output(
+            ["python3", str(base / PLUGIN_ID / "tools/worker_runtime.py")],
+            env=environment, text=True, timeout=120,
+        ).strip()
+        from worker_smoke import smoke
+        smoke(worker)
 
 
 def main():
@@ -91,8 +72,8 @@ def main():
         return
     if platform.system() != "Linux" or platform.machine() != "x86_64":
         raise ValueError("This release target supports Linux x86_64 only")
-    from bundle import check_bundle
-    check_bundle()
+    from worker_runtime import read_pin
+    read_pin(ROOT / "engine/release.pin.json")
     files = release_files()
     destination = ROOT / "build/dist"
     destination.mkdir(parents=True, exist_ok=True)
