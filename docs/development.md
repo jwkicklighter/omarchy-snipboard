@@ -54,7 +54,9 @@ python3 tools/worker_smoke.py build/release/snipboard-worker
 ```
 
 Use disposable `--data` directories for candidate protocol tests, never live
-state. Do not replace a cached executable with a local build: bootstrap rejects
+state. Explicit `--data` keeps all files (including snippets) in that sandbox;
+without it, snippets use the plugin's XDG config extension directory and migrate
+automatically from the legacy state directory. Do not replace a cached executable with a local build: bootstrap rejects
 checksum mismatches. UI integration must use the published engine. Engine source,
 publication, and compatible UI/pin are separate PR stages; see
 [releases.md](releases.md). `make package` smoke-tests a fresh extracted plugin's

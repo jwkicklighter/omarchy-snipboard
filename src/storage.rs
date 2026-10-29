@@ -258,18 +258,55 @@ pub struct Store {
 
 impl Store {
     pub fn new(root: &Path) -> Result<Self> {
-        DirBuilder::new().recursive(true).mode(0o700).create(root)?;
-        let info = root.symlink_metadata()?;
-        if !info.is_dir() || info.uid() != sys::uid() || info.mode() & 0o077 != 0 {
-            return Err(Error::Invalid("prototype root must be an owner-only real directory"));
+        Self::with_library_root(root, root)
+    }
+
+    pub fn with_library_root(root: &Path, library_root: &Path) -> Result<Self> {
+        for directory in [root, library_root] {
+            DirBuilder::new().recursive(true).mode(0o700).create(directory)?;
+            let info = directory.symlink_metadata()?;
+            if !info.is_dir() || info.uid() != sys::uid() || info.mode() & 0o077 != 0 {
+                return Err(Error::Invalid("storage root must be an owner-only real directory"));
+            }
         }
         Ok(Store {
             root: root.to_path_buf(),
-            library_path: root.join("library.json"),
+            library_path: library_root.join("library.json"),
             usage_path: root.join("usage.local.json"),
             library: Library::default(),
             readonly: false,
         })
+    }
+
+    /// Run under the worker lock. Publish without overwriting a synced library,
+    /// including across filesystems, and delete the legacy file only after fsync.
+    pub fn migrate_library(&self) -> Result<()> {
+        let legacy = self.root.join("library.json");
+        if legacy == self.library_path || self.library_path.try_exists()? {
+            return Ok(());
+        }
+        let raw = match read_private(&legacy) {
+            Ok(raw) => raw,
+            Err(Error::Io(error)) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        parse_library(&raw)?;
+        let directory = self.library_path.parent().ok_or(Error::Invalid("path has no directory"))?;
+        let temporary = Temporary(directory.join(format!(".snipboard-{}", sys::random_hex(8)?)));
+        let mut stream = OpenOptions::new().write(true).create_new(true).mode(0o600).open(&temporary.0)?;
+        stream.write_all(&raw)?;
+        stream.sync_all()?;
+        // Both link paths are on the new filesystem; this atomically publishes
+        // the complete file without replacing a destination created meanwhile.
+        match fs::hard_link(&temporary.0, &self.library_path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => return Ok(()),
+            Err(error) => return Err(error.into()),
+        }
+        File::open(directory)?.sync_all()?;
+        fs::remove_file(legacy)?;
+        File::open(&self.root)?.sync_all()?;
+        Ok(())
     }
 
     /// Seed the fixture only on first run; a later missing library is an error, not a reset.

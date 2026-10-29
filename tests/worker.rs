@@ -88,6 +88,92 @@ fn fields(snippet: &Value) -> Value {
     json!({"name": snippet["name"], "body": snippet["body"], "notes": snippet["notes"], "keyword": snippet["keyword"]})
 }
 
+fn default_command(home: &Path) -> Command {
+    let mut command = Command::new(WORKER);
+    command.env("HOME", home).env("XDG_STATE_HOME", home.join("state")).env("XDG_CONFIG_HOME", home.join("config"));
+    command
+}
+
+#[test]
+fn default_paths_migrate_snippets_but_keep_history_and_usage_in_state() {
+    let home = data();
+    let state = home.path().join("state/omarchy-snipboard-prototype");
+    let config = home.path().join("config/omarchy/extensions/io.github.jwkicklighter.snipboard");
+    // Prepare an existing installation using the legacy, self-contained override.
+    let mut legacy = Worker::launch(&state);
+    let revision = legacy.request(json!({"op": "snippet-get", "record": ""}))["revision"].clone();
+    let saved = legacy.request(json!({"op": "snippet-save", "record": "", "revision": revision, "fields": {
+        "name": "Migrated", "body": "Exact\r\n🌍", "notes": "", "keyword": ""
+    }}));
+    assert!(saved["record"].is_string(), "{saved}");
+    legacy.request(json!({"op": "clipboard-capture", "text": "Private history"}));
+    legacy.shutdown();
+    snipboard::storage::write_usage(&state.join("usage.local.json"), &Default::default()).unwrap();
+    let library = fs::read(state.join("library.json")).unwrap();
+    let history = fs::read(state.join("history.local.json")).unwrap();
+    let usage = fs::read(state.join("usage.local.json")).unwrap();
+
+    let mut worker = Worker::spawn(&mut default_command(home.path()));
+    assert!(!state.join("library.json").exists());
+    assert_eq!(fs::read(config.join("library.json")).unwrap(), library);
+    assert_eq!(fs::read(state.join("history.local.json")).unwrap(), history);
+    assert_eq!(worker.request(json!({"op": "search", "kind": "clipboard"}))["rows"].as_array().unwrap().len(), 1);
+    let row = worker.request(json!({"op": "search", "kind": "snippet"}))["rows"][0].clone();
+    assert_eq!(worker.request(json!({"op": "render", "record": row["id"]}))["text"], "Exact\r\n🌍");
+    worker.shutdown();
+    assert_eq!(fs::read(state.join("usage.local.json")).unwrap(), usage);
+    assert!(!config.join("history.local.json").exists());
+    assert!(!config.join("usage.local.json").exists());
+    assert_eq!(fs::metadata(config.join("library.json")).unwrap().permissions().mode() & 0o777, 0o600);
+    Worker::spawn(&mut default_command(home.path())).shutdown();
+    assert_eq!(fs::read(config.join("library.json")).unwrap(), library);
+}
+
+#[test]
+fn synced_library_wins_without_deleting_legacy_library() {
+    let home = data();
+    let state = home.path().join("state/omarchy-snipboard-prototype");
+    let config = home.path().join("config/omarchy/extensions/io.github.jwkicklighter.snipboard");
+    Worker::launch(&state).shutdown();
+    let legacy = fs::read(state.join("library.json")).unwrap();
+    fs::create_dir_all(&config).unwrap();
+    fs::set_permissions(&config, fs::Permissions::from_mode(0o700)).unwrap();
+    let synced = snipboard::core::synthetic_library(4);
+    write_library(&config.join("library.json"), &synced).unwrap();
+    Worker::spawn(&mut default_command(home.path())).shutdown();
+    assert_eq!(read_library(&config.join("library.json")).unwrap(), synced);
+    assert_eq!(fs::read(state.join("library.json")).unwrap(), legacy);
+}
+
+#[test]
+fn fresh_default_install_and_empty_xdg_fallback_use_config_for_snippets() {
+    for empty_xdg in [false, true] {
+        let home = data();
+        let mut command = default_command(home.path());
+        let (state, config) = if empty_xdg {
+            command.env("XDG_CONFIG_HOME", "").env("XDG_STATE_HOME", "");
+            (home.path().join(".local/state"), home.path().join(".config"))
+        } else {
+            (home.path().join("state"), home.path().join("config"))
+        };
+        Worker::spawn(&mut command).shutdown();
+        assert_eq!(read_library(&config.join("omarchy/extensions/io.github.jwkicklighter.snipboard/library.json")).unwrap(), snipboard::storage::Library::default());
+        assert!(!state.join("omarchy-snipboard-prototype/library.json").exists());
+    }
+}
+
+#[test]
+fn invalid_legacy_library_is_retained_and_not_replaced_with_empty_library() {
+    let home = data();
+    let state = home.path().join("state/omarchy-snipboard-prototype");
+    Worker::launch(&state).shutdown();
+    fs::write(state.join("library.json"), b"invalid JSON").unwrap();
+    let output = default_command(home.path()).output().unwrap();
+    assert!(!output.status.success());
+    assert_eq!(fs::read(state.join("library.json")).unwrap(), b"invalid JSON");
+    assert!(!home.path().join("config/omarchy/extensions/io.github.jwkicklighter.snipboard/library.json").exists());
+}
+
 #[test]
 fn clipboard_callback_capture_search_literal_reuse_and_restart() {
     let directory = data();
