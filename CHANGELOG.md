@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0](https://github.com/jwkicklighter/omarchy-snipboard/compare/v0.4.2...v0.5.0) (2026-10-29)
+
+
+### Features
+
+* store snippets in syncable plugin configuration ([#19](https://github.com/jwkicklighter/omarchy-snipboard/issues/19)) ([e2a6424](https://github.com/jwkicklighter/omarchy-snipboard/commit/e2a6424dc2cf71e1d6d89bd0e0b8f489af5bbb95))
+
+
+### Bug Fixes
+
+* adopt engine 0.5.0 for syncable snippet storage ([#21](https://github.com/jwkicklighter/omarchy-snipboard/issues/21)) ([d6e8f00](https://github.com/jwkicklighter/omarchy-snipboard/commit/d6e8f002f85d4126a04ca0608db55d12cc7646d3))
+
 ## [0.4.2](https://github.com/jwkicklighter/omarchy-snipboard/compare/v0.4.1...v0.4.2) (2026-10-29)
 
 
