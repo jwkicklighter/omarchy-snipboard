@@ -17,6 +17,12 @@ fn data() -> tempfile::TempDir {
     directory
 }
 
+fn data_with_snippets() -> tempfile::TempDir {
+    let directory = data();
+    write_library(&directory.path().join("library.json"), &snipboard::core::synthetic_library(1000)).unwrap();
+    directory
+}
+
 struct Worker {
     process: Child,
     input: Option<ChildStdin>,
@@ -162,7 +168,7 @@ fn clipboard_repeats_promote_one_exact_item() {
 
 #[test]
 fn clipboard_delete_is_history_only_and_persists() {
-    let directory = data();
+    let directory = data_with_snippets();
     let mut worker = Worker::launch(directory.path());
     let first = worker.request(json!({"op": "clipboard-capture", "text": "Delete 🌍\r\n{date}"}))["record"].clone();
     let second = worker.request(json!({"op": "clipboard-capture", "text": "Keep this"}))["record"].clone();
@@ -258,7 +264,7 @@ fn paste_protocol_renders_templates_and_sends_one_paste_gesture() {
 
 #[test]
 fn protocol_scratch_search_and_persistence() {
-    let directory = data();
+    let directory = data_with_snippets();
     let mut worker = Worker::launch(directory.path());
     let result = worker.request(json!({"op": "search", "query": "email", "seq": 3}));
     assert_eq!(result["seq"], 3);
@@ -354,7 +360,7 @@ fn source_and_relative_data_paths_are_fatal() {
 
 #[test]
 fn duplicate_drafts_are_explicit_independent_and_revision_checked() {
-    let directory = data();
+    let directory = data_with_snippets();
     let path = directory.path().join("library.json");
     let mut worker = Worker::launch(directory.path());
     let original = worker.request(json!({"op": "snippet-get", "record": "snippet-0000"}));
@@ -455,7 +461,7 @@ fn snippet_crud_exact_text_stable_usage_and_restart() {
 
 #[test]
 fn editor_validation_stale_drafts_and_clipboard_are_not_mutated() {
-    let directory = data();
+    let directory = data_with_snippets();
     let path = directory.path().join("library.json");
     let mut worker = Worker::launch(directory.path());
     let original = worker.request(json!({"op": "snippet-get", "record": "snippet-0000"}));
@@ -515,7 +521,7 @@ fn editor_validation_stale_drafts_and_clipboard_are_not_mutated() {
 
 #[test]
 fn external_change_missing_and_invalid_reload_keep_last_good() {
-    let directory = data();
+    let directory = data_with_snippets();
     let path = directory.path().join("library.json");
     let mut worker = Worker::launch(directory.path());
     let original = worker.request(json!({"op": "snippet-get", "record": "snippet-0000"}));

@@ -127,7 +127,7 @@ At the owner's request, the **entire git repository** is in:
 
 The overlay was enabled with approval for validation, then **left disabled** after cleanup checks. This development increment does not enable it or change desktop settings. Existing clipboard configuration was not replaced or re-enabled. Backend and offscreen editor tests cover local editing; external application compatibility and the UI latency targets remain open blockers.
 
-Prototype data is separate, in `${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-snipboard-prototype/`, with owner-only files. Other clipboard managers' history, snippets, and services are untouched. The initial snippet library still contains generated examples; synthetic clipboard entries are no longer loaded.
+Prototype data is separate, in `${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-snipboard-prototype/`, with owner-only files. Other clipboard managers' history, snippets, and services are untouched. Fresh installations start with an empty snippet library and no synthetic clipboard entries. Updates preserve existing snippets.
 
 ## Goals
 
