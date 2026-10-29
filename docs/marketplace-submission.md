@@ -20,14 +20,15 @@ Snipboard Prototype provides local clipboard text history and snippet search in
 an Omarchy Quattro overlay. This is explicitly a prototype; global typed keyword
 expansion and image history are not implemented.
 
-The repository includes a prebuilt Linux x86_64 worker (glibc 2.39 or newer), so
+The plugin installs a separately released Linux x86_64 worker (glibc 2.39 or newer), so
 `omarchy plugin add https://github.com/jwkicklighter/omarchy-snipboard --enable`
-requires no Rust toolchain or manual build. Release automation commits the worker
-and its version, source fingerprint, and checksum to the release PR; CI validates
-the bundle and starts it from a disposable extracted installation. The README
+requires no Rust toolchain or manual build. On first run it downloads the engine
+version pinned in the repository, verifies its committed SHA-256 checksum, and
+installs it in the user's XDG data directory. CI tests the published pin from a
+disposable extracted installation separately from source-built candidates. The README
 documents runtime dependencies, updates, disabling, and removal. Other CPU
-architectures are not supported. There is no first-run binary download or package
-installation; the native executable is delivered through Git with the plugin.
+architectures are not supported. First-run downloads require GitHub Releases
+access; a verified cached worker runs offline. No system packages are installed.
 
 The enabled plugin records regular text clipboard contents using wl-paste and
 stores history/snippets locally in owner-only files. Clipboard contents can be

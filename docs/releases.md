@@ -1,156 +1,132 @@
-# Releases and Omarchy marketplace
+# Independent engine and plugin releases
 
-## What is automated
+Snipboard follows Omastorm's distribution model. Git installs follow upstream
+HEAD; plugin tags are `vX.Y.Z`. Rust engines are separately published immutable
+GitHub Release assets tagged `engine-X.Y.Z`. Source may be ahead of the plugin's
+committed [`engine/release.pin.json`](../engine/release.pin.json).
 
-- `.github/workflows/ci.yml`: pushes on every branch, pull requests, manual runs,
-  and weekly checks using Rust 1.89 and the current stable toolchain. Runs the
-  Rust, keyboard-layout, Qt Quick, Lua, worker, and Python packaging tests; checks
-  the manifest using a pinned upstream Omarchy Quattro validator; packages and
-  verifies the tracked worker's version, source fingerprint, architecture, libc
-  requirements and checksum, then starts it from an extracted release bundle.
-  CI never activates a real desktop plugin. Full Omarchy QML lint and live
-  compositor tests remain local.
-- `.github/workflows/release.yml`: pushes to `master` run Release Please, which
-  maintains a release PR from Conventional Commits.
-  The PR updates `Cargo.toml`, `Cargo.lock`, `manifest.json`, the release manifest,
-  and changelog. A read-only build job compiles the PR's exact source on Ubuntu
-  24.04, then a separate write job commits the executable and metadata to the PR
-  and enables squash auto-merge. No PR scripts or binaries execute in the write
-  job. The token-authenticated commit triggers fresh required CI checks.
-  Merging it creates a tag and draft release, runs the same CI at
-  that exact tag, then uploads the Linux x86_64 bundle and checksum and publishes.
-  Failed tests, packaging, or version checks leave the release unpublished.
-- An opt-in release job opens a marketplace **update request**, not an approval.
-  `.github/workflows/marketplace.yml` can retry that step for an existing release.
-  Existing requests for the same commit are reused, including closed ones; edit
-  the existing issue to trigger marketplace validation again.
+## Ownership and PR order
 
-All third-party Actions and the upstream manifest validator are pinned to commit
-SHAs. Review/update those pins periodically. Rust stable itself intentionally
-tracks the latest stable toolchain. No untrusted pull request receives secrets
-or release write permissions.
+1. Submit Rust source, Cargo/version, and Rust test changes in an **engine PR**.
+   Do not change QML, the plugin manifest, or the worker pin in that PR.
+2. Merge and publish the engine if UI work depends on it.
+3. Submit compatible QML and a verified published pin together in a **UI PR**.
+   UI must never require an unpublished engine. UI-only fixes can keep their pin.
 
-## Initial marketplace submission (one-time, owner approval required)
+CI's **Separate engine and UI PRs** check enforces this boundary, including
+renames. Shared docs/release tooling are neutral; `tools/worker_runtime.py` is
+plugin delivery code. Require this check and the Rust test checks in branch
+protection. Breaking protocol changes can land in source while the existing UI
+keeps its old pin. Do not update the pin just because source changed.
 
-The repository is public, contains one root manifest with the permanent ID
-`io.github.jwkicklighter.snipboard`, a root MIT license, and installation,
-dependencies, privacy, update, and removal instructions in the root README.
-The root `preview.png` is a full-screen capture using fictional sample data. The
-marketplace discovers this filename automatically and generates optimized card
-and detail images; no manifest field or manual image resizing is required. The manifest retains
-the Prototype name/status rather than claiming unfinished features are stable.
+## Publish an engine
 
-1. Commit and push this configuration to `master`; ensure CI passes.
-2. Search the marketplace for the permanent ID to confirm no conflict/retired ID.
-3. Review the completed draft in
-   [marketplace-submission.md](marketplace-submission.md). The owner must confirm
-   **all five checklist statements**, including ownership, before submission.
-4. With explicit owner approval, open the initial issue:
+1. In an engine PR, update the package version in `Cargo.toml` and the matching
+   `snipboard` entry in `Cargo.lock` to a new X.Y.Z. Preserve dependency versions.
+   Do **not** bump `manifest.json`, `.plugin-version`, or the pin.
+2. Run `make build test validate`. After merge, from clean `master` freshly
+   matching `origin/master`, create and push only the annotated engine tag:
 
    ```sh
-   gh issue create --repo omacom/omarchy-plugin-marketplace \
-     --title '[Plugin]: Snipboard Prototype' \
-     --body-file docs/marketplace-submission.md
+   git fetch origin
+   git diff --exit-code origin/master
+   git tag -a engine-X.Y.Z -m 'Engine X.Y.Z'
+   git push origin refs/tags/engine-X.Y.Z
    ```
 
-5. Address compatibility/security-baseline feedback in the same issue. Disclose
-   the checked-in Linux x86_64 worker and its runtime dependencies. Standard Git
-   installs need no manual build or first-run download; marketplace maintainers
-   decide the listing's classification and review requirements.
-6. Wait for marketplace maintainer review and `approved-and-verified` publication.
-   Only after the listing exists should update-request automation be enabled.
+3. `.github/workflows/engine-release.yml` builds/tests on Ubuntu 24.04 x86_64,
+   verifies the Cargo version/tag and ELF/glibc requirements, smoke-tests the
+   worker handshake, and uploads these draft release assets:
+   - `snipboard-worker-linux-x86_64` (raw executable)
+   - `worker.json` (version, target, binary checksum, source commit)
+   - `SHA256SUMS`
+   - `release.pin.json` (candidate pin, not an automatic repository update)
+4. Review the **draft**, then publish it in GitHub. Do not replace published
+   assets or move tags; fix mistakes with a new version. Reruns can repair a
+   draft but refuse a published release. Manual workflow runs build candidate
+   artifacts only; they do not create tags or releases.
+5. On a UI working branch, adopt the published release:
 
-The draft is not an issued submission or a claim of owner approval. Do not open
-duplicates. No submission, tag, release, secret, or remote setting is created by
-merely adding these files.
+   ```sh
+   python3 tools/engine_release.py pin engine-X.Y.Z
+   ```
 
-## Enable automatic marketplace update requests
+   Requires Python 3.11+, `gh`, and `readelf`. It checks published/stable status,
+   resolves the tag's commit, downloads all four assets from the fixed repository,
+   verifies checksums, architecture/glibc requirements and build metadata, then
+   atomically updates the tracked pin. Failure leaves the pin unchanged. It never
+   commits, pushes, executes downloaded code, or publishes anything.
+6. Include the pin with compatible UI, run `make test package`, and review before
+   merging. Packaging installs and smoke-tests the **published pin**, never a
+   source-built substitute. CI also tests source-built candidates independently.
+   Metadata equality alone is not feature compatibility coverage.
 
-The normal repository `GITHUB_TOKEN` cannot open issues in the marketplace's
-repository. Supply a **dedicated** GitHub credential able to create issues in
-`omacom/omarchy-plugin-marketplace` as Actions secret `MARKETPLACE_TOKEN`.
-The token's account must actually have that access; a fine-grained token scoped
-only to this plugin repository will not work. A classic token with `public_repo`
-can create issues in a public marketplace but grants broader access: prefer an
-appropriately scoped GitHub App/fine-grained credential if the marketplace grants
-one. Never commit a token or copy an existing local login credential into CI.
+The first independent release (`engine-0.4.2`) is a one-time migration cut from
+the existing local worker fixes plus an engine-only Cargo version commit on
+`release/engine-0.4.2`. It is published explicitly because the new workflow is
+not upstream yet. Merge that version branch through normal review; subsequent
+releases use the workflow above. The plugin migration itself changes no Rust.
 
-After configuring the secret and after initial listing approval:
+## First-run installation
 
-```sh
-gh variable set MARKETPLACE_SUBMITTED --body true
+QML runs `python3 tools/worker_runtime.py` before launching the worker or clipboard
+capture. It downloads **only** the committed pin, checks SHA-256 and the ELF
+architecture, and atomically installs it under:
+
+```text
+${XDG_DATA_HOME:-$HOME/.local/share}/omarchy-snipboard/workers/<sha256>/snipboard-worker
 ```
 
-You can configure the secret interactively with
-`gh secret set MARKETPLACE_TOKEN` or in GitHub Settings → Secrets and variables →
-Actions. The workflow fails visibly if enabled without a working credential;
-GitHub release publication remains successful and the marketplace job is
-independently retryable. Disable update requests by setting the variable to
-`false` or removing it.
+The checksum is rechecked on startup. A valid cached worker works offline; a
+missing/corrupt one needs GitHub access. Installation is locked and staged on the
+destination filesystem. A failed download/check never launches unverified code
+or falls back to an older version. Pins coexist, so reverting a UI/pin PR can
+reuse its cached engine. No Cargo, build, latest-version lookup, background
+updater, or system package installation runs on users' machines. Checksums detect
+corruption, not independent provenance or marketplace security approval.
 
-## Enable release automation (one-time)
+Failures appear in the picker; diagnostics are in
+`${XDG_DATA_HOME:-$HOME/.local/share}/omarchy-snipboard/bootstrap.log`. Fix the
+network/storage/platform issue, then reload or restart the shell to retry.
+History/snippets are stored separately and never modified by the installer.
 
-Like `herdr-prompt-library`, this workflow requires an Actions secret named
-`RELEASE_PLEASE_TOKEN`: a dedicated credential with repository contents and pull
-request read/write permissions. It must be able to create PRs, tags, and draft
-releases, push bundled-worker commits to release PR branches, and enable auto-merge.
-Using a separate token rather than `GITHUB_TOKEN`
-allows release PRs and merges to trigger CI and subsequent release runs. Configure
-it through GitHub Settings or `gh secret set RELEASE_PLEASE_TOKEN`; do not copy a
-local login credential into CI.
+## Publish the plugin
 
-Enable **Allow auto-merge** and squash merging in repository settings. Configure
-branch protection/rulesets on `master` to require the CI checks before merging;
-without required checks GitHub may merge the release PR immediately. Ensure token
-permissions and repository rules allow the release bot's PRs and merges.
+Release Please maintains a plugin release PR from Conventional Commits. Its
+**simple** strategy updates `.plugin-version`, `manifest.json`, the release
+manifest and changelog, **not Cargo metadata or the engine pin**. Review and merge
+normally; there is no binary commit job or automatic PR merge.
 
-`release-please-config.json` uses the Rust release strategy to update Cargo
-metadata and an extra JSON updater for the plugin manifest. The initial
-`.release-please-manifest.json` baseline is `0.1.0`.
+The `vX.Y.Z` draft triggers full CI at that tag, including installing/smoke-testing
+its published worker pin. On success, automation uploads the plugin-only archive
+and checksum and publishes the plugin release. Archives contain QML, metadata,
+docs, pin and installer, never Rust binaries/private data. Failed checks leave
+the draft unpublished. Retry failed jobs in the original run; do not move tags.
 
-## Publish a version
+Configure `RELEASE_PLEASE_TOKEN` with repository contents and PR write access so
+bot PRs/tags trigger Actions. Do not copy local credentials into CI. Actions and
+the upstream validator are commit-pinned; review pins periodically. PRs receive
+no release secrets/write permissions. Require CI and review on `master`.
 
-1. Use Conventional Commits (`feat:`, `fix:`, etc.) and push changes to `master`.
-   Release Please calculates the next version and maintains the release PR;
-   do not manually bump package versions or create release tags.
-2. Source PRs changing worker/Cargo inputs must also refresh the tracked executable
-   and metadata using `make bundle` on Ubuntu 24.04 x86_64; CI rejects stale workers.
-   QML/docs-only changes do not require a worker rebuild. Run
-   `make build test validate package` on Omarchy. Review runtime compatibility
-   separately; successful offscreen CI does not prove all external apps work.
-3. Review the release PR's version and changelog. The workflow bundles the worker
-   before enabling auto-merge. Auto-merge completes once the
-   repository's required checks/reviews pass. The subsequent `master` push creates
-   the tagged draft, tests it, packages the exact tracked worker, uploads assets,
-   then publishes it. Cargo rebuilds in CI test the source, but do not replace
-   the checked-in executable in the release archive.
-   If checks or upload fail, rerun the failed jobs in that original workflow run;
-   the draft stays unpublished until publication succeeds. Do not move tags.
-   For a worker-build failure before the release PR merges, rerun the failed jobs
-   or manually dispatch **Release** on `master`; it also finds an existing pending
-   release PR when Release Please has no new updates.
-4. If opted in, the workflow opens `[Verify]: Snipboard vX.Y.Z` with the exact
-   release SHA. It refuses stale tags, draft releases, and prereleases. Marketplace
-   updates require current upstream HEAD, so avoid advancing `master` while the
-   request is under review; otherwise prepare a newer release/request.
-5. A marketplace maintainer reviews the exact commit and approves promotion.
-   There is no supported API to bypass this step or automatically approve it.
+## Marketplace
 
-Retry an update request with Actions → **Retry marketplace update**, entering the
-published tag, or rerun the failed release job. For a read-only preview:
+Initial publication remains a separate owner-approved submission. Review
+[marketplace-submission.md](marketplace-submission.md), confirm its checklist,
+and follow the marketplace's
+[submission instructions](https://github.com/omacom/omarchy-plugin-marketplace/blob/main/SUBMISSION.md).
+Disclose the first-run download/dependencies. Maintainers decide approval;
+automation cannot bypass review.
+
+After initial approval, set `MARKETPLACE_SUBMITTED=true` and supply a dedicated
+`MARKETPLACE_TOKEN` able to create marketplace issues. Plugin releases can then
+open exact-commit update requests; engine releases do not. Retry using Actions →
+**Retry marketplace update**, or preview without creating an issue:
 
 ```sh
-python3 tools/marketplace.py --tag v0.1.0 --dry-run
+python3 tools/marketplace.py --tag vX.Y.Z --dry-run
 ```
 
-This contacts GitHub to check the release and HEAD, but does not create an issue.
-GitHub CLI (`gh`) must be installed/authenticated for marketplace tooling.
-
-## Upstream requirements
-
-- [Submission instructions](https://github.com/omacom/omarchy-plugin-marketplace/blob/main/SUBMISSION.md)
-- [Verification/update policy](https://github.com/omacom/omarchy-plugin-marketplace/blob/main/VERIFICATION.md)
-- [Publishing guide](https://plugins.omarchy.org/publish.html)
-
-Marketplace checks are not a security audit. Publication, verified snapshots,
-GitHub releases, and mutable source installation are distinct operations.
+Requests require a published stable plugin tag at default-branch HEAD. Do not
+advance HEAD during review; otherwise prepare a newer request. Existing requests,
+including closed ones, are reused. Review covers an exact commit; normal plugin
+updates follow mutable upstream HEAD.
