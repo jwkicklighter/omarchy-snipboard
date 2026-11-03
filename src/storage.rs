@@ -207,6 +207,10 @@ impl Drop for Temporary {
 pub(crate) fn atomic_write<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     let mut encoded = serde_json::to_vec_pretty(value).map_err(|_| Error::Invalid("unserializable value"))?;
     encoded.push(b'\n');
+    atomic_write_bytes(path, &encoded)
+}
+
+pub(crate) fn atomic_write_bytes(path: &Path, encoded: &[u8]) -> Result<()> {
     if encoded.len() as u64 > MAX_FILE {
         return Err(Error::Invalid("file exceeds limit"));
     }
@@ -221,7 +225,7 @@ pub(crate) fn atomic_write<T: Serialize>(path: &Path, value: &T) -> Result<()> {
         .mode(0o600)
         .custom_flags(libc::O_NOFOLLOW)
         .open(&temporary.0)?;
-    stream.write_all(&encoded)?;
+    stream.write_all(encoded)?;
     stream.sync_all()?;
     drop(stream);
     replace(&temporary.0, path)?;

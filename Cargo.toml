@@ -1,6 +1,6 @@
 [package]
 name = "snipboard"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 rust-version = "1.89"
 license = "MIT"
@@ -8,6 +8,7 @@ description = "Isolated search, storage, and template helper for the Snipboard O
 publish = false
 
 [dependencies]
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp"] }
 caseless = "0.2"
 libc = "0.2"
 serde = { version = "1", features = ["derive"] }
