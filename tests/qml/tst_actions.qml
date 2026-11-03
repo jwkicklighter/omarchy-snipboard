@@ -15,6 +15,15 @@ TestCase {
         verify(list.indexOf("edit") < 0, "clipboard text is not an editable snippet")
     }
 
+    function test_image_row_has_no_text_only_actions() {
+        const list = ids(SbActions.forRow({id: "clipboard-image-1", kind: "clipboard", image: true}))
+        verify(list.indexOf("paste") >= 0)
+        verify(list.indexOf("copy") >= 0)
+        verify(list.indexOf("delete") >= 0)
+        verify(list.indexOf("duplicate") < 0)
+        verify(list.indexOf("scratch") < 0)
+    }
+
     function test_snippet_row_offers_editing_and_confirmed_deletion() {
         const list = ids(SbActions.forRow({id: "snippet-1", kind: "snippet"}))
         verify(list.indexOf("edit") >= 0)

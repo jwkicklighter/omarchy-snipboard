@@ -55,6 +55,21 @@ TestCase {
         }
     }
 
+    function test_images_clear_on_selection_and_ignore_stale_replies() {
+        const picker = makePicker()
+        tryCompare(picker, "nextSequence", 1)
+        const old = picker.requests[0]
+        picker.preview.receive({seq: old.seq, body: "image/png", imagePath: "/private/image"})
+        compare(picker.preview.imagePath, "/private/image")
+        picker.selected = 1
+        compare(picker.preview.imagePath, "")
+        picker.preview.receive({seq: old.seq, body: "stale", imagePath: "/private/stale"})
+        compare(picker.preview.imagePath, "")
+        tryCompare(picker, "nextSequence", 2)
+        reply(picker, picker.requests[1], "text")
+        compare(picker.preview.imagePath, "")
+    }
+
     function test_replacing_rows_at_same_index_refreshes() {
         const picker = makePicker()
         tryCompare(picker, "nextSequence", 1)

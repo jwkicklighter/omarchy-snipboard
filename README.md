@@ -6,13 +6,16 @@ A native clipboard history and snippet picker for the Omarchy shell.
 
 ![Snipboard with fictional clipboard history and snippets](preview.png)
 
-- Fuzzy search across clipboard text and saved snippets.
+- Clipboard text and image history, with image previews and copy/paste.
+- Fuzzy search across clipboard text, image metadata, and saved snippets.
 - Preview, copy, paste, and save clipboard entries as snippets.
 - Create, edit, duplicate, and delete snippets.
 - Keyboard-first controls and colors from your Omarchy theme.
 
-**Early-stage prototype:** text only. Images, sync, and global typed expansion
-are not implemented.
+**Early-stage prototype:** sync and global typed expansion are not implemented.
+Images support PNG, JPEG, WebP, GIF, and BMP (8 MiB per image; previews show the
+first frame). Image history retains up to 200 images / 128 MiB for 30 days.
+Images cannot be saved as text snippets. Oversized or unsupported images are skipped.
 
 ## Install
 
@@ -46,7 +49,7 @@ omarchy-shell shell summon io.github.jwkicklighter.snipboard '{}'
 
 ## Privacy
 
-While enabled, Snipboard records clipboard text even when the picker is closed.
+While enabled, Snipboard records clipboard text and images even when the picker is closed.
 Source-marked sensitive selections are skipped, but this is **not universal
 password detection**. Data stays local; there is no telemetry or upload.
 Like other Omarchy plugins, Snipboard runs unsandboxed.

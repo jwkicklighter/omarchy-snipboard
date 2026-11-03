@@ -11,10 +11,10 @@ function forRow(row) {
         if (row.kind === "snippet") {
             list.push({id: "edit", label: "Edit snippet", glyph: "󰏫", keys: ["Ctrl", "E"], detail: "Change name, text, keyword, or notes"})
             list.push({id: "duplicate", label: "Duplicate snippet", glyph: "󰆑", keys: ["Ctrl", "D"], detail: "Start a new snippet from this one"})
-        } else {
+        } else if (!row.image) {
             list.push({id: "duplicate", label: "Save as snippet", glyph: "󰅩", keys: ["Ctrl", "S"], detail: "Start a new snippet from this text"})
         }
-        list.push({id: "scratch", label: "Insert into scratchpad", glyph: "󰁅", keys: [], detail: "Render into the disposable scratchpad"})
+        if (!row.image) list.push({id: "scratch", label: "Insert into scratchpad", glyph: "󰁅", keys: [], detail: "Render into the disposable scratchpad"})
         if (row.kind === "clipboard")
             list.push({id: "delete", label: "Delete from history", glyph: "󰆴", keys: ["Ctrl", "Del"], danger: true, detail: "Remove from history; the system clipboard is unchanged"})
         else if (row.kind === "snippet")
