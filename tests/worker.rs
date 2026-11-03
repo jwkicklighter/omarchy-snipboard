@@ -11,6 +11,45 @@ use snipboard::storage::{read_library, read_usage, write_library};
 
 const WORKER: &str = env!("CARGO_BIN_EXE_snipboard-worker");
 
+#[test]
+fn images_capture_preview_restart_and_delete_through_protocol() {
+    let directory = data();
+    let mut worker = Worker::launch(directory.path());
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::new_rgb8(4, 3).write_to(&mut bytes, image::ImageFormat::Png).unwrap();
+    let bytes = bytes.into_inner();
+    for state in ["sensitive", "nil", "clear"] {
+        let mut event = Command::new(WORKER).arg("--clipboard-image-event").arg(directory.path())
+            .env("CLIPBOARD_STATE", state).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+        let _ = event.stdin.take().unwrap().write_all(&bytes);
+        assert!(event.wait_with_output().unwrap().stdout.is_empty());
+        assert!(!directory.path().join("image.pending").exists());
+    }
+    let mut event = Command::new(WORKER).arg("--clipboard-image-event").arg(directory.path())
+        .env("CLIPBOARD_STATE", "data").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+    event.stdin.take().unwrap().write_all(&bytes).unwrap();
+    let frame: Value = serde_json::from_slice(&event.wait_with_output().unwrap().stdout).unwrap();
+    let captured = worker.request(json!({"op": "clipboard-image-capture", "hash": frame["hash"]}));
+    let record = captured["record"].clone();
+    assert!(record.is_string(), "{captured}");
+    worker.request(json!({"op": "clipboard-capture", "text": "Keep text too"}));
+    let rows = worker.request(json!({"op": "search", "kind": "clipboard", "query": "image"}));
+    assert_eq!(rows["rows"].as_array().unwrap().len(), 1);
+    assert_eq!(rows["rows"][0]["image"], true);
+    let preview = worker.request(json!({"op": "preview", "record": record}));
+    let path = Path::new(preview["imagePath"].as_str().unwrap());
+    assert_eq!(fs::read(path).unwrap(), bytes);
+    for op in ["snippet-draft", "render"] {
+        assert!(worker.request(json!({"op": op, "record": record}))["error"].is_string());
+    }
+    worker.shutdown();
+    let mut worker = Worker::launch(directory.path());
+    assert_eq!(worker.request(json!({"op": "search", "kind": "clipboard"}))["rows"].as_array().unwrap().len(), 2);
+    assert_eq!(worker.request(json!({"op": "clipboard-delete", "record": record}))["deleted"], true);
+    assert!(!path.exists());
+    worker.shutdown();
+}
+
 fn data() -> tempfile::TempDir {
     let directory = tempfile::Builder::new().prefix("snipboard-").tempdir().unwrap();
     fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700)).unwrap();
@@ -345,6 +384,16 @@ fn paste_protocol_renders_templates_and_sends_one_paste_gesture() {
         assert!(!commands.path().join("input-args").exists());
     }
     assert!(worker.request(json!({"op": "paste", "record": "missing"})).get("error").is_some());
+    let mut image = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::new_rgb8(4, 3).write_to(&mut image, image::ImageFormat::Png).unwrap();
+    let bytes = image.into_inner();
+    let hash = snipboard::images::stage(directory.path(), &bytes).unwrap();
+    let captured = worker.request(json!({"op": "clipboard-image-capture", "hash": hash}));
+    let pasted = worker.request(json!({"op": "paste", "record": captured["record"]}));
+    assert_eq!(pasted["ok"], true, "{pasted}");
+    assert_eq!(fs::read(commands.path().join("copied")).unwrap(), bytes);
+    assert_eq!(fs::read_to_string(commands.path().join("copy-args")).unwrap(), "--type\nimage/png\n");
+    assert_eq!(fs::read_to_string(commands.path().join("input-args")).unwrap(), format!("eval\n{}\n", include_str!("../src/paste.lua")));
     worker.shutdown();
 }
 

@@ -23,6 +23,10 @@ fn default_library() -> PathBuf {
 }
 
 fn main() -> ExitCode {
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--clipboard-image-event")) {
+        let Some(root) = std::env::args_os().nth(2) else { return usage() };
+        return clipboard_image_event(&PathBuf::from(root));
+    }
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--clipboard-event")) {
         return clipboard_event();
     }
@@ -73,6 +77,20 @@ fn clipboard_event() -> ExitCode {
     }
     let event = snipboard::json::to_ascii_string(&serde_json::json!({"text": text}));
     let _ = writeln!(std::io::stdout(), "{event}");
+    ExitCode::SUCCESS
+}
+
+fn clipboard_image_event(root: &std::path::Path) -> ExitCode {
+    if std::env::var("CLIPBOARD_STATE").is_ok_and(|state| state != "data") {
+        return ExitCode::SUCCESS;
+    }
+    let mut bytes = Vec::new();
+    if std::io::stdin().take(snipboard::images::MAX_IMAGE_BYTES as u64 + 1).read_to_end(&mut bytes).is_err() {
+        return ExitCode::SUCCESS;
+    }
+    if let Ok(hash) = snipboard::images::stage(root, &bytes) {
+        let _ = writeln!(std::io::stdout(), "{}", serde_json::json!({"hash": hash}));
+    }
     ExitCode::SUCCESS
 }
 

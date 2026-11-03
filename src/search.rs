@@ -43,6 +43,7 @@ pub struct Record {
     pub notes: String,
     /// Clipboard chronology; newer records sort first on equal relevance.
     pub created: f64,
+    pub image: bool,
 }
 
 impl From<&Snippet> for Record {
@@ -55,6 +56,7 @@ impl From<&Snippet> for Record {
             body: snippet.body.clone(),
             notes: snippet.notes.clone(),
             created: 0.0,
+            image: false,
         }
     }
 }

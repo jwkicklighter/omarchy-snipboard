@@ -14,6 +14,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::core::{MAX_KEYWORD, Rendered, char_len, render, scratch_match};
 use crate::history::History;
+use crate::images::Images;
 use crate::json::{replace_lone_surrogates, to_ascii_string};
 use crate::search::{Index, Kind, RESULT_LIMIT, Record};
 use crate::storage::{Library, Snippet, Store, Usage, UsageEntry, read_library, read_usage, validate_library, write_usage};
@@ -81,6 +82,7 @@ pub struct Worker {
     pub usage: Usage,
     pub index: Index,
     history: History,
+    images: Images,
     child: Option<Child>,
 }
 
@@ -110,9 +112,11 @@ impl Worker {
         let usage = if store.usage_path.exists() { read_usage(&store.usage_path)? } else { Usage::new() };
         let history = History::read(&store.root.join("history.local.json"), sys::now())?;
         let mut records = history.records();
+        let images = Images::read(&store.root, sys::now())?;
+        records.extend(images.records());
         records.extend(library.snippets.iter().map(Record::from));
         let index = Index::new(records, &usage);
-        Ok(Worker { store, _lock: lock, usage, index, history, child: None })
+        Ok(Worker { store, _lock: lock, usage, index, history, images, child: None })
     }
 
     /// Stop the clipboard process this worker owns, if any. Never touches other processes.
@@ -228,14 +232,18 @@ impl Worker {
     }
 
     fn copy(&mut self, text: &str) -> Result<()> {
+        self.copy_bytes(text.as_bytes(), "text/plain;charset=utf-8")
+    }
+
+    fn copy_bytes(&mut self, bytes: &[u8], mime: &str) -> Result<()> {
         self.cleanup();
         let mut child = Command::new("setpriv")
-            .args(["--pdeathsig", "TERM", "wl-copy", "--foreground", "--type", "text/plain;charset=utf-8"])
+            .args(["--pdeathsig", "TERM", "wl-copy", "--foreground", "--type", mime])
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()?;
-        let written = child.stdin.take().map_or(Ok(()), |mut stdin| stdin.write_all(text.as_bytes()));
+        let written = child.stdin.take().map_or(Ok(()), |mut stdin| stdin.write_all(bytes));
         self.child = Some(child);
         Ok(written?)
     }
@@ -248,6 +256,7 @@ impl Worker {
 
     fn rendered(&self, request: &Map<String, Value>) -> std::result::Result<Rendered, Failure> {
         let item = self.record(request)?;
+        if item.image { return Err(Failure::Action("Images cannot be rendered as text.")); }
         if item.kind == Kind::Clipboard {
             // Clipboard text is never a template, including escaped variable syntax.
             Ok(Rendered { text: item.body.clone(), cursor: None })
@@ -259,12 +268,17 @@ impl Worker {
     pub fn dispatch(&mut self, request: &Map<String, Value>) -> Response {
         let operation = request.get("op").and_then(Value::as_str).unwrap_or_default();
         match operation {
+            "clipboard-image-capture" => {
+                let hash = text(request, "hash").ok_or(Failure::Generic)?;
+                let record = self.images.capture_pending(&self.store.root, hash, sys::now())
+                    .map_err(|_| Failure::Action("Image skipped: unsupported, damaged, oversized, or local storage unavailable."))?;
+                self.reindex_history();
+                Ok(object(json!({"record": record})))
+            }
             "clipboard-capture" => {
                 let body = text(request, "text").ok_or(Failure::Generic)?;
                 let record = self.history.capture(&self.store.root.join("history.local.json"), body, sys::now())?;
-                let mut records = self.history.records();
-                records.extend(self.store.library.snippets.iter().map(Record::from));
-                self.index = Index::new(records, &self.usage);
+                self.reindex_history();
                 Ok(object(json!({"record": record})))
             }
             "clipboard-delete" => {
@@ -273,10 +287,12 @@ impl Worker {
                     return Err(Failure::Action("Select a clipboard history entry to delete."));
                 }
                 let record = item.id.clone();
-                self.history.delete(&self.store.root.join("history.local.json"), &record)?;
-                let mut records = self.history.records();
-                records.extend(self.store.library.snippets.iter().map(Record::from));
-                self.index = Index::new(records, &self.usage);
+                if item.image {
+                    self.images.delete(&self.store.root, &record)?;
+                } else {
+                    self.history.delete(&self.store.root.join("history.local.json"), &record)?;
+                }
+                self.reindex_history();
                 Ok(object(json!({"record": record, "deleted": true})))
             }
             "snippet-get" => {
@@ -294,6 +310,7 @@ impl Worker {
             "snippet-save" => self.change_library(request, false),
             "snippet-draft" => {
                 let item = self.record(request)?;
+                if item.image { return Err(Failure::Action("Images cannot be saved as text snippets.")); }
                 let (name, body, notes) = if item.kind == Kind::Snippet {
                     // A duplicate keeps the template, but never shares identity,
                     // expansion keyword, or usage with its source.
@@ -321,14 +338,15 @@ impl Worker {
                     .into_iter()
                     .map(|r| {
                         let summary: String = r.body.chars().take(100).collect();
-                        json!({"id": r.id, "name": r.name, "kind": r.kind.as_str(), "summary": summary.replace('\n', " ↵ ")})
+                        json!({"id": r.id, "name": r.name, "kind": r.kind.as_str(), "image": r.image, "summary": summary.replace('\n', " ↵ ")})
                     })
                     .collect();
                 Ok(object(json!({"rows": rows, "matchMs": elapsed})))
             }
             "preview" => {
                 let item = self.record(request)?;
-                Ok(object(json!({"body": item.body, "keyword": item.keyword, "kind": item.kind.as_str(), "created": item.created})))
+                Ok(object(json!({"body": item.body, "keyword": item.keyword, "kind": item.kind.as_str(), "created": item.created,
+                    "imagePath": self.images.preview(&self.store.root, &item.id)})))
             }
             "scratch" => {
                 if request.get("enabled") != Some(&Value::Bool(true))
@@ -353,15 +371,27 @@ impl Worker {
                 }})))
             }
             "copy" => {
-                let result = self.rendered(request)?;
-                self.copy(&result.text)?;
+                let item = self.record(request)?;
+                if item.image {
+                    let (bytes, mime) = self.images.payload(&self.store.root, &item.id)?;
+                    self.copy_bytes(&bytes, &mime)?;
+                } else {
+                    let result = self.rendered(request)?;
+                    self.copy(&result.text)?;
+                }
                 Ok(object(json!({"message": "Copy requested (clipboard ownership unacknowledged).", "confirmed": false})))
             }
             "paste" => {
                 let item = self.record(request)?;
                 let record = item.id.clone();
-                let result = self.rendered(request)?;
-                let mut response = self.paste(&result)?;
+                let mut response = if item.image {
+                    let (bytes, mime) = self.images.payload(&self.store.root, &record)?;
+                    self.cleanup();
+                    paste_bytes(&bytes, &mime, 0, Command::new("wl-copy"), Command::new("hyprctl"))?
+                } else {
+                    let result = self.rendered(request)?;
+                    self.paste(&result)?
+                };
                 response.insert("record".into(), record.into());
                 Ok(response)
             }
@@ -388,6 +418,13 @@ impl Worker {
             }
             _ => Err(Failure::Generic),
         }
+    }
+
+    fn reindex_history(&mut self) {
+        let mut records = self.history.records();
+        records.extend(self.images.records());
+        records.extend(self.store.library.snippets.iter().map(Record::from));
+        self.index = Index::new(records, &self.usage);
     }
 
     /// Handle one protocol line, returning the response object.
@@ -461,16 +498,20 @@ fn paste_script(steps: usize) -> String {
     PASTE_LUA.replace("local cursor_steps = 0", &format!("local cursor_steps = {steps}"))
 }
 
-fn paste_text(text: &str, steps: usize, mut copy: Command, mut input: Command) -> Response {
+fn paste_text(text: &str, steps: usize, copy: Command, input: Command) -> Response {
+    paste_bytes(text.as_bytes(), "text/plain;charset=utf-8", steps, copy, input)
+}
+
+fn paste_bytes(bytes: &[u8], mime: &str, steps: usize, mut copy: Command, mut input: Command) -> Response {
     const COPY_FAILED: &str = "Paste failed: could not set the clipboard. Check wl-copy and the Wayland session, or use Copy only.";
-    const INPUT_FAILED: &str = "Text copied, but the paste shortcut failed. Check the Hyprland session or paste manually.";
+    const INPUT_FAILED: &str = "Content copied, but the paste shortcut failed. Check the Hyprland session or paste manually.";
     // The default wl-copy parent exits only after setting the selection. Its
     // background owner must remain alive to serve the target's clipboard request.
     // Send text on stdin, never through shell interpolation or process arguments.
-    let mut child = copy.args(["--type", "text/plain;charset=utf-8"])
+    let mut child = copy.args(["--type", mime])
         .stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null())
         .spawn().map_err(|_| Failure::Action(COPY_FAILED))?;
-    let written = child.stdin.take().unwrap().write_all(text.as_bytes());
+    let written = child.stdin.take().unwrap().write_all(bytes);
     let copied = child.wait();
     if written.is_err() || !copied.is_ok_and(|status| status.success()) {
         return Err(Failure::Action(COPY_FAILED));
@@ -523,6 +564,8 @@ pub fn serve_with_library_root(root: &Path, library_root: &Path) -> Result<()> {
         let mut ready = worker.library_state();
         ready.insert("op".into(), "ready".into());
         ready.insert("count".into(), worker.index.records().len().into());
+        ready.insert("imageCaptureVersion".into(), 1.into());
+        ready.insert("dataPath".into(), worker.store.root.to_string_lossy().into_owned().into());
         ready
     };
     writeln!(stdout, "{}", to_ascii_string(&ready))?;
@@ -756,7 +799,7 @@ mod tests {
                 if input_exit == 0 && reply == "ok" {
                     assert!(result.is_ok());
                 } else {
-                    assert!(matches!(result, Err(Failure::Action(message)) if message.starts_with("Text copied,")));
+                    assert!(matches!(result, Err(Failure::Action(message)) if message.starts_with("Content copied,")));
                 }
             }
         }

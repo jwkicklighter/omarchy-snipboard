@@ -6,6 +6,7 @@
 pub mod core;
 pub mod dev;
 pub mod history;
+pub mod images;
 pub mod json;
 pub mod search;
 pub mod storage;
