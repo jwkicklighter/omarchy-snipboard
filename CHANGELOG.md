@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/jwkicklighter/omarchy-snipboard/compare/v0.5.0...v0.6.0) (2026-11-03)
+
+
+### Features
+
+* add bounded clipboard image history to engine ([#22](https://github.com/jwkicklighter/omarchy-snipboard/issues/22)) ([7c6ba5f](https://github.com/jwkicklighter/omarchy-snipboard/commit/7c6ba5fd0db04929b9c9cfd9a4d38f9fa98755f3))
+* add image previews with fixed picker columns ([#23](https://github.com/jwkicklighter/omarchy-snipboard/issues/23)) ([c452b17](https://github.com/jwkicklighter/omarchy-snipboard/commit/c452b17d43d914a258ab3b8cc2017eb9b1c40328))
+
 ## [0.5.0](https://github.com/jwkicklighter/omarchy-snipboard/compare/v0.4.2...v0.5.0) (2026-10-29)
 
 
