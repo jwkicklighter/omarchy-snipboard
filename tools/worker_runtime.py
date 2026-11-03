@@ -87,6 +87,13 @@ def main():
     if args.check:
         print(f"Valid worker pin: {pin['tag']}")
         return
+    # Explicit, untracked source-checkout opt-in; packaged installs always use the pin.
+    if (ROOT / ".git").exists() and (ROOT / ".local-worker").is_file():
+        worker = ROOT / "build/release/snipboard-worker"
+        if not worker.is_file() or not os.access(worker, os.X_OK):
+            raise SystemExit("Local worker opted in but missing; run cargo build --release.")
+        print(worker)
+        return
     data_home = Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local/share"))).resolve()
     log = data_home / "omarchy-snipboard/bootstrap.log"
     log.parent.mkdir(parents=True, exist_ok=True, mode=0o700)

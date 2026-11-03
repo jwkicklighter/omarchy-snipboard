@@ -57,7 +57,11 @@ Use disposable `--data` directories for candidate protocol tests, never live
 state. Explicit `--data` keeps all files (including snippets) in that sandbox;
 without it, snippets use the plugin's XDG config extension directory and migrate
 automatically from the legacy state directory. Do not replace a cached executable with a local build: bootstrap rejects
-checksum mismatches. UI integration must use the published engine. Engine source,
+checksum mismatches. To test worker/UI changes together in a source checkout,
+create an empty `.local-worker` file (gitignored), build with `cargo build --release`,
+then run `omarchy restart shell`. Bootstrap uses `build/release/snipboard-worker`
+only when that opt-in and `.git` both exist; remove `.local-worker` and restart
+to return to the published pin. Packaged installations always use the pin. Engine source,
 publication, and compatible UI/pin are separate PR stages; see
 [releases.md](releases.md). `make package` smoke-tests a fresh extracted plugin's
 download/install and wire handshake with disposable state; it needs GitHub access.

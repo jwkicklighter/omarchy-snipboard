@@ -8,6 +8,7 @@ QtObject {
     property string record: ""
     property int sequence: 0
     property string body: ""
+    property string imagePath: ""
     property string keyword: ""
     property real created: 0
     signal requested(string record)
@@ -19,6 +20,7 @@ QtObject {
         sequence = 0
         record = ""
         body = ""
+        imagePath = ""
         keyword = ""
         created = 0
     }
@@ -34,6 +36,7 @@ QtObject {
     function receive(message) {
         if (!sequence || message.seq !== sequence || !subject || subject.id !== record) return
         body = message.body
+        imagePath = message.imagePath || ""
         keyword = message.keyword || ""
         created = message.created || 0
     }

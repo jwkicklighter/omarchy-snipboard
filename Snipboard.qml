@@ -72,6 +72,7 @@ Item {
     property string layoutProbeResult: "not run"
     readonly property string sourceDirectory: decodeURIComponent(Qt.resolvedUrl(".").toString().replace(/^file:\/\//, "").replace(/\/$/, ""))
     property string workerExecutable: ""
+    property string workerDataPath: ""
     readonly property var activeRow: rows.length > selected ? rows[selected] : null
     // The preview follows the action target while the action menu is open.
     readonly property var previewSubject: actionsOpen ? actionTarget : activeRow
@@ -223,7 +224,8 @@ Item {
         else if (action.id === "reload") reloadLibrary()
     }
 
-    function rowGlyph(kind, text) {
+    function rowGlyph(kind, text, image) {
+        if (image) return "󰋩"
         if (kind === "snippet") return "󰅩"
         if (/^https?:\/\//.test(text)) return "󰌷"
         if (/^(\/|~\/)\S*$/.test(text)) return "󰈔"
@@ -272,7 +274,7 @@ Item {
 
     function insertScratch(row) {
         row = row || activeRow
-        if (!row) return
+        if (!row || row.image) return
         resetScratch()
         const seq = send("render", {record: row.id, clipboard: clipboardInput.text})
         pendingRender = {seq: seq, record: row.id, revision: scratchRevision}
@@ -281,8 +283,10 @@ Item {
     function receive(message) {
         if (message.op === "ready") {
             ready = true
-            status = message.count + " records · recording clipboard text"
+            status = message.count + (message.imageCaptureVersion === 1 ? " records · recording clipboard text and images" : " records · recording clipboard text (image support needs a newer worker)")
             clipboardWatcher.running = true
+            workerDataPath = message.dataPath || ""
+            imageWatcher.running = message.imageCaptureVersion === 1 && workerDataPath.length > 0
             requestSearch()
             return
         }
@@ -348,7 +352,7 @@ Item {
             status = "Deleted from history. System clipboard unchanged."
             return
         }
-        if (message.op === "clipboard-capture") {
+        if (message.op === "clipboard-capture" || message.op === "clipboard-image-capture") {
             if (opened && !editorVisible) requestSearch()
             return
         }
@@ -362,11 +366,11 @@ Item {
                 // Keep delegates and unchanged roles across query updates.
                 for (let i = 0; i < rows.length; i++) {
                     const row = rows[i]
-                    const value = {recordId: row.id, name: row.name, kind: row.kind, summary: row.summary}
+                    const value = {recordId: row.id, name: row.name, kind: row.kind, summary: row.summary, image: row.image === true}
                     if (i >= displayModel.count) displayModel.append(value)
                     else {
                         const old = displayModel.get(i)
-                        if (old.recordId !== row.id || old.name !== row.name || old.summary !== row.summary || old.kind !== row.kind) displayModel.set(i, value)
+                        if (old.recordId !== row.id || old.name !== row.name || old.summary !== row.summary || old.kind !== row.kind || old.image !== value.image) displayModel.set(i, value)
                     }
                 }
                 if (displayModel.count > rows.length) displayModel.remove(rows.length, displayModel.count - rows.length)
@@ -428,7 +432,8 @@ Item {
                                openToModelAssignmentMs: openLatency, syntheticInputToFrameSwappedMs: frameLatency,
                                openToFrameSwappedMs: openFrameLatency, physicalPresentationMeasured: false,
                                 rows: rows.length, ready: ready, searchFocused: search.activeFocus,
-                                 clipboardCaptureVersion: 1, clipboardWatcherRunning: clipboardWatcher.running,
+                                 clipboardCaptureVersion: 2, clipboardWatcherRunning: clipboardWatcher.running,
+                                 imageWatcherRunning: imageWatcher.running,
                                   historyDeleteVersion: 1, historyDeletePending: pendingHistoryDelete !== 0,
                                   overlayWindowVersion: 1, windowVisible: panel.visible,
                                   windowWidth: panel.width, windowHeight: panel.height,
@@ -510,6 +515,7 @@ Item {
         expansionEnabled = false
         workerBootstrap.running = false
         clipboardWatcher.running = false
+        imageWatcher.running = false
         helper.running = false
     }
 
@@ -618,6 +624,22 @@ Item {
     }
 
     Process {
+        id: imageWatcher
+        command: ["setpriv", "--pdeathsig", "TERM", "wl-paste", "--type", "image", "--watch",
+                  "setpriv", "--pdeathsig", "TERM", root.workerExecutable, "--clipboard-image-event", root.workerDataPath]
+        stdout: SplitParser {
+            onRead: function(line) {
+                try {
+                    const event = JSON.parse(line)
+                    if (root.ready && typeof event.hash === "string") root.send("clipboard-image-capture", {hash: event.hash})
+                } catch (error) { root.status = "Image event rejected; private details suppressed." }
+            }
+        }
+        stderr: SplitParser { onRead: function(line) { root.status = "Image capture unavailable. Check wl-paste and Wayland data-control support." } }
+        onExited: if (root.ready) root.status = "Image capture stopped. Reload the plugin to retry."
+    }
+
+    Process {
         id: helper
         command: ["setpriv", "--pdeathsig", "TERM", root.workerExecutable]
         workingDirectory: root.sourceDirectory
@@ -631,6 +653,7 @@ Item {
         stderr: SplitParser { onRead: function(line) { root.status = "Helper diagnostic suppressed; run automated tests for details." } }
         onExited: {
             clipboardWatcher.running = false
+            imageWatcher.running = false
             pasteHandoff.cancel()
             root.pendingPaste = 0
             root.ready = false
@@ -919,7 +942,7 @@ Item {
                                 else if (event.key === Qt.Key_E && command) {
                                     if (root.activeRow && root.activeRow.kind === "snippet") root.editSnippet(root.activeRow.id)
                                 } else if (event.key === Qt.Key_S && command) {
-                                    if (root.activeRow && root.activeRow.kind === "clipboard") root.editSnippet(root.activeRow.id, true)
+                                    if (root.activeRow && root.activeRow.kind === "clipboard" && !root.activeRow.image) root.editSnippet(root.activeRow.id, true)
                                 } else if (event.key === Qt.Key_D && command) {
                                     if (root.activeRow && root.activeRow.kind === "snippet") root.editSnippet(root.activeRow.id, true)
                                 } else if (event.key === Qt.Key_Delete && command) {
@@ -1009,7 +1032,10 @@ Item {
                     spacing: 0
 
                     ColumnLayout {
+                        id: historyColumn
                         Layout.fillHeight: true
+                        // Fix the split independently of preview content's implicit size.
+                        Layout.minimumWidth: card.width * 0.55
                         Layout.preferredWidth: card.width * 0.55
                         Layout.maximumWidth: card.width * 0.55
                         Layout.topMargin: Style.space(10)
@@ -1045,11 +1071,12 @@ Item {
                                 required property string name
                                 required property string kind
                                 required property string summary
+                                required property bool image
                                 required property int index
                                 readonly property int position: index - results.firstVisible + 1
                                 width: results.width
                                 current: index === root.selected
-                                glyph: root.rowGlyph(kind, name)
+                                glyph: root.rowGlyph(kind, name, image)
                                 title: name
                                 subtitle: kind === "snippet" && summary !== name ? summary : ""
                                 onHovered: root.selected = index
@@ -1133,10 +1160,13 @@ Item {
                     ColumnLayout {
                         visible: !root.scratchVisible
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        Layout.preferredWidth: 0
                         Layout.fillHeight: true
                         Layout.margins: card.gutter
                         spacing: Style.space(8)
                         ScrollView {
+                            visible: !previewLoader.imagePath.length
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
@@ -1187,11 +1217,28 @@ Item {
                                 }
                             }
                         }
+                        // The viewport has no image-derived size hints for the layout.
+                        Item {
+                            id: imageViewport
+                            visible: previewLoader.imagePath.length > 0
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            clip: true
+                            Image {
+                                anchors.fill: parent
+                                source: previewLoader.imagePath.length ? "file://" + encodeURI(previewLoader.imagePath).replace(/#/g, "%23").replace(/\?/g, "%3F") : ""
+                                sourceSize.width: 1024
+                                sourceSize.height: 1024
+                                fillMode: Image.PreserveAspectFit
+                                asynchronous: true
+                                cache: false
+                            }
+                        }
                         Caption {
                             visible: root.previewSubject !== null && root.preview.length > 0
                             Layout.fillWidth: true
                             horizontalAlignment: Text.AlignHCenter
-                            text: SbActions.stats(root.preview)
+                            text: previewLoader.imagePath.length ? root.preview : SbActions.stats(root.preview)
                         }
                         Caption {
                             visible: text.length > 0
@@ -1207,6 +1254,8 @@ Item {
                     ColumnLayout {
                         visible: root.scratchVisible
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        Layout.preferredWidth: 0
                         Layout.fillHeight: true
                         Layout.margins: card.gutter
                         spacing: Style.space(8)

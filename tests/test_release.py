@@ -216,7 +216,26 @@ class PinnedWorkerTests(unittest.TestCase):
         self.assertIn('/tools/worker_runtime.py', qml)
         self.assertNotIn('/bin/linux-x86_64/', qml)
         self.assertNotIn('/build/release/snipboard-worker', qml)
-        self.assertEqual(qml.count('root.workerExecutable'), 4)
+        self.assertEqual(qml.count('root.workerExecutable'), 5)
+        self.assertIn('"--clipboard-image-event", root.workerDataPath', qml)
+
+    def test_local_worker_requires_explicit_checkout_opt_in(self):
+        (self.root / ".local-worker").touch()
+        worker = self.root / "build/release/snipboard-worker"
+        worker.parent.mkdir(parents=True)
+        worker.write_bytes(b"local fixture")
+        worker.chmod(0o700)
+        pin = self.root / "engine/release.pin.json"
+        pin.parent.mkdir()
+        pin.write_text(json.dumps(self.pin))
+        with patch.object(runtime, "ROOT", self.root), patch.object(sys, "argv", ["worker_runtime.py"]), \
+                patch.object(runtime, "ensure_worker", return_value=worker) as ensure, patch("builtins.print"):
+            runtime.main()
+            ensure.assert_called_once()  # A marker alone cannot bypass a packaged pin.
+            ensure.reset_mock()
+            (self.root / ".git").mkdir()
+            runtime.main()
+            ensure.assert_not_called()
 
     def test_split_ownership_allows_pin_with_ui_not_engine(self):
         self.assertEqual(split.groups(["src/main.rs", "Cargo.lock"])[1], [])
