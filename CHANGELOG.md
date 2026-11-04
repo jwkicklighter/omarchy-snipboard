@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.0](https://github.com/jwkicklighter/omarchy-snipboard/compare/v0.6.0...v0.7.0) (2026-11-04)
+
+
+### Features
+
+* automate attested engine and plugin release handoff ([#25](https://github.com/jwkicklighter/omarchy-snipboard/issues/25)) ([9db8ca3](https://github.com/jwkicklighter/omarchy-snipboard/commit/9db8ca308a661bcc339bedf119d7e6a92b6fd32b))
+
+
+### Bug Fixes
+
+* adopt engine-0.6.1 ([#26](https://github.com/jwkicklighter/omarchy-snipboard/issues/26)) ([11040d6](https://github.com/jwkicklighter/omarchy-snipboard/commit/11040d6fbd29876cc4addaddbec29d60b8f48eed))
+* discover component-specific release pull requests ([#27](https://github.com/jwkicklighter/omarchy-snipboard/issues/27)) ([56e90dc](https://github.com/jwkicklighter/omarchy-snipboard/commit/56e90dc4b0482a897b541e9ec14def1ed5aca4e5))
+
 ## [0.6.0](https://github.com/jwkicklighter/omarchy-snipboard/compare/v0.5.0...v0.6.0) (2026-11-03)
 
 
