@@ -130,6 +130,14 @@ def require_merge_policy(branch):
         raise ValueError("Branch protection must enforce required checks for administrators too")
 
 
+def release_branches(branch):
+    config = json.loads((ROOT / "release-please-config.json").read_text())
+    package = config["packages"]["."]
+    component = package.get("component", package.get("package-name"))
+    plain = f"release-please--branches--{branch}"
+    return [plain, f"{plain}--components--{component}"] if component else [plain]
+
+
 def auto_merge(number, kind):
     pr = json.loads(gh("pr", "view", str(number), "--repo", REPOSITORY, "--json",
                        "headRefName,headRefOid,baseRefName,isCrossRepository,state,files"))
@@ -142,7 +150,7 @@ def auto_merge(number, kind):
             raise ValueError("Engine adoption PR must change only the pin")
     else:
         allowed = {"CHANGELOG.md", "manifest.json", ".plugin-version", ".release-please-manifest.json"}
-        if pr["headRefName"] != f"release-please--branches--{branch}" or not files or not files <= allowed:
+        if pr["headRefName"] not in release_branches(branch) or not files or not files <= allowed:
             raise ValueError("Unexpected release PR branch or files")
     require_merge_policy(branch)
     gh("pr", "merge", str(number), "--repo", REPOSITORY, "--auto", "--squash",
@@ -182,10 +190,11 @@ def main():
         auto_merge(args.pr, args.kind)
     else:
         branch = api("")["default_branch"]
-        prs = json.loads(gh("pr", "list", "--repo", REPOSITORY, "--state", "open",
-                           "--head", f"release-please--branches--{branch}", "--json", "number"))
-        for pr in prs:
-            auto_merge(pr["number"], "release")
+        for head in release_branches(branch):
+            prs = json.loads(gh("pr", "list", "--repo", REPOSITORY, "--state", "open",
+                               "--base", branch, "--head", head, "--json", "number"))
+            for pr in prs:
+                auto_merge(pr["number"], "release")
 
 
 if __name__ == "__main__":

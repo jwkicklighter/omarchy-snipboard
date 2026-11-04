@@ -183,16 +183,56 @@ class PipelineTests(unittest.TestCase):
         pr = {"headRefName": "release-please--branches--master", "headRefOid": "a" * 40,
               "baseRefName": "master", "isCrossRepository": False, "state": "OPEN",
               "files": [{"path": path} for path in ["CHANGELOG.md", ".plugin-version", "manifest.json", ".release-please-manifest.json"]]}
-        with patch.object(pipeline, "gh", side_effect=[json.dumps(pr), ""]) as gh, \
-                patch.object(pipeline, "api", return_value={"default_branch": "master"}), \
-                patch.object(pipeline, "require_merge_policy"):
-            pipeline.auto_merge(13, "release")
-        self.assertEqual(gh.call_count, 2)
+        for branch in ["release-please--branches--master", "release-please--branches--master--components--snipboard"]:
+            with self.subTest(branch=branch):
+                pr["headRefName"] = branch
+                with patch.object(pipeline, "gh", side_effect=[json.dumps(pr), ""]) as gh, \
+                        patch.object(pipeline, "api", return_value={"default_branch": "master"}), \
+                        patch.object(pipeline, "require_merge_policy"):
+                    pipeline.auto_merge(13, "release")
+                self.assertEqual(gh.call_count, 2)
         pr["files"].append({"path": "Snipboard.qml"})
         with patch.object(pipeline, "gh", return_value=json.dumps(pr)) as gh, \
                 patch.object(pipeline, "api", return_value={"default_branch": "master"}), self.assertRaisesRegex(ValueError, "Unexpected release"):
             pipeline.auto_merge(13, "release")
         self.assertEqual(gh.call_count, 1)
+
+    def test_release_branch_names_follow_configured_component(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for package, expected in [
+                ({"package-name": "snipboard"}, "snipboard"),
+                ({"package-name": "snipboard", "component": "worker-ui"}, "worker-ui"),
+                ({}, None),
+            ]:
+                (root / "release-please-config.json").write_text(json.dumps({"packages": {".": package}}))
+                with patch.object(pipeline, "ROOT", root):
+                    names = pipeline.release_branches("main")
+                plain = "release-please--branches--main"
+                self.assertEqual(names, [plain, f"{plain}--components--{expected}"] if expected else [plain])
+
+    def test_auto_release_discovers_component_branch(self):
+        with patch.object(sys, "argv", ["release_pipeline.py", "auto-release"]), \
+                patch.object(pipeline, "api", return_value={"default_branch": "master"}), \
+                patch.object(pipeline, "gh", side_effect=["[]", '[{"number": 27}]']) as gh, \
+                patch.object(pipeline, "auto_merge") as merge:
+            pipeline.main()
+        self.assertEqual([call.args[call.args.index("--head") + 1] for call in gh.call_args_list], [
+            "release-please--branches--master", "release-please--branches--master--components--snipboard",
+        ])
+        merge.assert_called_once_with(27, "release")
+
+    def test_auto_release_rejects_unconfigured_component_and_other_base_branches(self):
+        pr = {"headRefName": "release-please--branches--master--components--other", "headRefOid": "a" * 40,
+              "baseRefName": "master", "isCrossRepository": False, "state": "OPEN", "files": [{"path": "CHANGELOG.md"}]}
+        for branch in ["release-please--branches--master--components--other", "release-please--branches--main--components--snipboard"]:
+            pr["headRefName"] = branch
+            with patch.object(pipeline, "gh", return_value=json.dumps(pr)) as gh, \
+                    patch.object(pipeline, "api", return_value={"default_branch": "master"}), \
+                    patch.object(pipeline, "require_merge_policy") as protection, self.assertRaisesRegex(ValueError, "Unexpected release"):
+                pipeline.auto_merge(27, "release")
+            protection.assert_not_called()
+            self.assertEqual(gh.call_count, 1)
 
     def test_final_release_gate_fails_closed_during_handoff(self):
         for aligned in [False, True]:
