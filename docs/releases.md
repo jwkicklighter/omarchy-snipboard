@@ -159,6 +159,9 @@ Release Please maintains a plugin release PR from Conventional Commits. Its
 **simple** strategy updates `.plugin-version`, `manifest.json`, the release
 manifest and changelog, **not Cargo metadata or the engine pin**. The automation
 enables auto-merge only for this metadata-only release PR, behind required CI.
+Discovery and validation accept the plain Release Please branch and the exact
+component-suffixed branch derived from `component` or `package-name` in the
+root package configuration; arbitrary component branches are not auto-merged.
 
 The `vX.Y.Z` draft triggers full CI at that tag, including installing/smoke-testing
 its published worker pin. On success, automation uploads the plugin-only archive
@@ -182,7 +185,21 @@ automation cannot bypass review.
 After initial approval, set `MARKETPLACE_SUBMITTED=true` and supply a dedicated
 `MARKETPLACE_TOKEN` able to create marketplace issues. Plugin releases can then
 open exact-commit update requests; engine releases do not. Retry using Actions →
-**Retry marketplace update**, or preview without creating an issue:
+**Retry marketplace update**.
+
+For a public marketplace repository you do not own or collaborate on, a
+fine-grained PAT cannot provide contribution access. Create a dedicated
+**personal access token (classic)** with only **`public_repo`** scope and an
+expiration at [GitHub token settings](https://github.com/settings/tokens).
+This scope is broader than issue-only access and applies across public
+repositories accessible to your account; do not grant the full `repo` scope.
+Save the value as `MARKETPLACE_TOKEN` under this plugin repository's **Settings →
+Secrets and variables → Actions → Repository secrets**, and set the repository
+variable `MARKETPLACE_SUBMITTED` to `true`. Never put the token in code, logs or
+chat. Organization policy can still block classic tokens; if it does, use manual
+issue submission or an integration approved by marketplace maintainers.
+
+To preview a request without creating an issue:
 
 ```sh
 python3 tools/marketplace.py --tag vX.Y.Z --dry-run
