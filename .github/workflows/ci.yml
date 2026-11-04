@@ -16,10 +16,11 @@ on:
 
 permissions:
   contents: read
+  attestations: read
 
 jobs:
   split:
-    name: Separate engine and UI PRs
+    name: Release policy
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     steps:
@@ -27,13 +28,10 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Check source ownership (including renamed paths)
+      - name: Check combined feature and pin-only release policy
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          git diff --name-only --no-renames -z "$BASE_SHA...$HEAD_SHA" > /tmp/pr-paths
-          python3 -c 'import sys; sys.path.insert(0, "tools"); from check_pr_split import groups; engine, ui = groups(open("/tmp/pr-paths").read().split("\0")); sys.exit("Split engine and UI changes; publish the engine first, then pin it in a separate UI PR. See docs/releases.md." if engine and ui else 0)'
+        run: python3 tools/release_policy.py "$BASE_SHA"
   test:
     name: Rust ${{ matrix.rust }} / Linux x86_64
     runs-on: ubuntu-24.04
@@ -68,15 +66,33 @@ jobs:
       - run: bash .ci-omarchy/bin/omarchy-plugin-validate .
       - name: Validate committed published worker pin (independent of source)
         run: python3 tools/worker_runtime.py --check
+      - name: Check whether the published pin matches this source
+        id: handoff
+        run: python3 tools/release_pipeline.py ready
+      - name: Verify provenance before accepting a new pin or publishing a UI release
+        if: steps.handoff.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$(python3 -c 'import json; print(json.load(open("engine/release.pin.json"))["tag"])')"
+          python3 tools/engine_release.py pin "$tag"
+          git diff --exit-code -- engine/release.pin.json
       - name: Build and test (including Qt, Lua, keyboard layouts and worker)
         run: |
           cargo build --release --locked
-          cargo test --release --locked
+          cargo test --release --locked -- --test-threads=1
           python3 -m unittest discover -s tests -p 'test_*.py'
+      - name: Test the actual published executable against the worker protocol suite
+        if: steps.handoff.outputs.ready == 'true'
+        run: |
+          SNIPBOARD_TEST_WORKER="$(python3 tools/worker_runtime.py)"
+          export SNIPBOARD_TEST_WORKER
+          cargo test --release --locked --test worker -- --test-threads=1
       - name: Package and smoke-test relocatable release
+        if: steps.handoff.outputs.ready == 'true'
         run: python3 tools/package.py --smoke-test
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: matrix.rust == 'stable'
+        if: matrix.rust == 'stable' && steps.handoff.outputs.ready == 'true'
         with:
           name: release-linux-x86_64
           path: build/dist/*

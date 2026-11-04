@@ -51,6 +51,16 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             package.check_versions(tag="v999.0.0")
 
+    def test_engine_workflow_attests_raw_binary_before_upload(self):
+        workflow = (ROOT / ".github/workflows/engine-release.yml").read_text()
+        self.assertIn("id-token: write", workflow)
+        self.assertIn("attestations: write", workflow)
+        attestation = workflow.index("uses: actions/attest@")
+        self.assertLess(workflow.index("python3 tools/engine_release.py package"), attestation)
+        self.assertLess(workflow.index("python3 tools/worker_smoke.py"), attestation)
+        self.assertLess(attestation, workflow.index("uses: actions/upload-artifact@"))
+        self.assertIn("subject-path: build/engine-dist/snipboard-worker-linux-x86_64", workflow)
+
     def test_plugin_version_is_independent_of_engine(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -237,7 +247,7 @@ class PinnedWorkerTests(unittest.TestCase):
             runtime.main()
             ensure.assert_not_called()
 
-    def test_split_ownership_allows_pin_with_ui_not_engine(self):
+    def test_release_path_classification(self):
         self.assertEqual(split.groups(["src/main.rs", "Cargo.lock"])[1], [])
         self.assertEqual(split.groups(["Snipboard.qml", "engine/release.pin.json"])[0], [])
         self.assertEqual(split.groups(["tests/qml.rs", "tests/qml/tst_editor.qml"])[0], [])
@@ -277,9 +287,28 @@ class PinnedWorkerTests(unittest.TestCase):
         def fetch(url, path):
             path.write_bytes(files[url.rsplit("/", 1)[1]])
 
-        with patch.object(engine, "gh", side_effect=[release, "a" * 40]), patch.object(engine, "download", side_effect=fetch), patch.object(engine, "check_executable"):
+        with patch.object(engine, "gh", side_effect=[release, "a" * 40, "verified"]) as gh, patch.object(engine, "download", side_effect=fetch), patch.object(engine, "check_executable"):
             engine.pin_release(self.pin["tag"], destination)
+        args = gh.call_args.args
+        self.assertEqual(args[:2], ("attestation", "verify"))
+        self.assertEqual(Path(args[2]).name, runtime.ASSET)
+        self.assertEqual(args[3:], (
+            "--repo", runtime.REPOSITORY,
+            "--signer-workflow", f"{runtime.REPOSITORY}/.github/workflows/engine-release.yml",
+            "--source-digest", "a" * 40, "--source-ref", "refs/tags/engine-1.2.3",
+            "--predicate-type", "https://slsa.dev/provenance/v1", "--deny-self-hosted-runners",
+        ))
         self.assertEqual(json.loads(destination.read_text()), self.pin)
+        # gh exits nonzero on a missing/invalid attestation or a policy mismatch.
+        for reason in ("missing attestation", "wrong digest", "wrong repository", "wrong workflow", "wrong source commit", "wrong source ref", "self-hosted runner"):
+            with self.subTest(reason=reason):
+                destination.write_text("unchanged")
+                failure = subprocess.CalledProcessError(1, ["gh", "attestation", "verify"], stderr=reason)
+                with patch.object(engine, "gh", side_effect=[release, "a" * 40, failure]), patch.object(engine, "download", side_effect=fetch), patch.object(engine, "check_executable"):
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        engine.pin_release(self.pin["tag"], destination)
+                self.assertEqual(destination.read_text(), "unchanged")
+                self.assertEqual(sorted(p.name for p in self.root.iterdir()), ["candidate", "tracked-pin"])
         destination.write_text("unchanged")
         files[runtime.ASSET] = b"corrupt"
         with patch.object(engine, "gh", side_effect=[release, "a" * 40]), patch.object(engine, "download", side_effect=fetch):

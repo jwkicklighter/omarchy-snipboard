@@ -1,0 +1,29 @@
+name: Engine release handoff
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: engine-release-handoff
+  cancel-in-progress: false
+
+jobs:
+  route:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: master
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Create an immutable engine tag and dispatch the next stage
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/release_pipeline.py route

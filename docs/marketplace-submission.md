@@ -45,3 +45,9 @@ shows the plugin on an Omarchy desktop using fictional sample data.
 - [x] I confirm that I own or have permission to submit this plugin and its preview assets.
 - [x] The plugin does not overwrite user configuration without explicit consent.
 - [x] I understand that approval is for listing and is not a security review.
+- [ ] The submitted commit pins a published engine whose individual executable has
+  verified build provenance linking it to the engine tag's source commit and
+  `engine-release.yml` (see [release instructions](releases.md)). Include links
+  to the engine release, build run and attestation in the Verify request.
+- [ ] The Verify target is the exact merged plugin commit containing that pin;
+  request fresh checks when replacing an older target or executable.

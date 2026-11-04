@@ -7,13 +7,27 @@ on:
 
 permissions:
   contents: read
+  attestations: read
 
 concurrency:
   group: plugin-release
   cancel-in-progress: false
 
 jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      ready: ${{ steps.gate.outputs.ready }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - id: gate
+        run: python3 tools/release_pipeline.py ready
   release:
+    needs: gate
+    if: needs.gate.outputs.ready == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -23,12 +37,19 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+      - name: Auto-merge the release PR after required CI passes
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: python3 tools/release_pipeline.py auto-release
 
   checks:
     needs: release
@@ -51,7 +72,9 @@ jobs:
       - name: Check plugin tag (engine version is independent)
         env:
           RELEASE_TAG: ${{ needs.release.outputs.tag_name }}
-        run: python3 tools/package.py --check --tag "$RELEASE_TAG"
+        run: |
+          python3 tools/release_pipeline.py ready --require
+          python3 tools/package.py --check --tag "$RELEASE_TAG"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: release-linux-x86_64

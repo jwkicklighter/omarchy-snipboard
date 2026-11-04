@@ -62,7 +62,7 @@ create an empty `.local-worker` file (gitignored), build with `cargo build --rel
 then run `omarchy restart shell`. Bootstrap uses `build/release/snipboard-worker`
 only when that opt-in and `.git` both exist; remove `.local-worker` and restart
 to return to the published pin. Packaged installations always use the pin. Engine source,
-publication, and compatible UI/pin are separate PR stages; see
+and related UI land together; automated publication and a pin-only PR follow; see
 [releases.md](releases.md). `make package` smoke-tests a fresh extracted plugin's
 download/install and wire handshake with disposable state; it needs GitHub access.
 Python unit tests mock downloads and never contact GitHub or read the clipboard.

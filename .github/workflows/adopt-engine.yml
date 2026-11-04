@@ -1,0 +1,52 @@
+name: Adopt published engine
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published attested engine tag
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  attestations: read
+
+concurrency:
+  group: engine-pin-adoption
+  cancel-in-progress: false
+
+jobs:
+  pin:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: master
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify provenance and prepare a current-version pin only
+        id: pin
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ENGINE_TAG: ${{ inputs.tag }}
+        run: python3 tools/release_pipeline.py prepare-pin --tag "$ENGINE_TAG"
+      - name: Open or update the pin-only PR
+        if: steps.pin.outputs.adopt == 'true'
+        id: pr
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          branch: automation/${{ inputs.tag }}
+          base: master
+          add-paths: engine/release.pin.json
+          commit-message: 'fix: adopt ${{ inputs.tag }}'
+          title: 'fix: adopt ${{ inputs.tag }}'
+          body: 'Automated pin-only handoff. The published executable passed checksum, source-commit and build-provenance verification. Required CI must pass before auto-merge.'
+      - name: Enable auto-merge only behind required, up-to-date CI checks
+        if: steps.pr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          PR_NUMBER: ${{ steps.pr.outputs.pull-request-number }}
+        run: python3 tools/release_pipeline.py auto-merge --kind pin --pr "$PR_NUMBER"
