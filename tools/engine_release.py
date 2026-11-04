@@ -58,6 +58,16 @@ def gh(*args):
     return subprocess.check_output(["gh", *args], text=True).strip()
 
 
+def verify_provenance(worker, tag, commit):
+    # gh validates the signature, executable digest and certificate-backed source
+    # identity. Do not trust worker.json (or unsigned predicate fields) for this.
+    gh("attestation", "verify", str(worker), "--repo", REPOSITORY,
+       "--signer-workflow", f"{REPOSITORY}/.github/workflows/engine-release.yml",
+       "--source-digest", commit, "--source-ref", f"refs/tags/{tag}",
+       "--predicate-type", "https://slsa.dev/provenance/v1",
+       "--deny-self-hosted-runners")
+
+
 def pin_release(tag, destination=ROOT / "engine/release.pin.json"):
     if not re.fullmatch(r"engine-\d+\.\d+\.\d+", tag):
         raise ValueError("Expected engine-X.Y.Z")
@@ -81,6 +91,7 @@ def pin_release(tag, destination=ROOT / "engine/release.pin.json"):
             raise ValueError("Release checksums/build metadata do not match")
         (directory / ASSET).chmod(0o755)
         check_executable(directory / ASSET)
+        verify_provenance(directory / ASSET, tag, commit)
         # Stage next to the tracked pin: a failed verification never changes it.
         with tempfile.NamedTemporaryFile(dir=destination.parent, delete=False) as staged:
             path = Path(staged.name)
@@ -104,11 +115,19 @@ def main():
     build.add_argument("--root", type=Path, default=ROOT, help="engine source checkout")
     pin = sub.add_parser("pin")
     pin.add_argument("tag")
+    verify = sub.add_parser("verify", help="Verify provenance of a built release executable")
+    verify.add_argument("--worker", type=Path, required=True)
+    verify.add_argument("--tag", required=True)
     args = parser.parse_args()
     if args.command == "package":
         package_engine(args.worker, args.destination, args.tag, args.root)
-    else:
+    elif args.command == "pin":
         pin_release(args.tag)
+    else:
+        if not re.fullmatch(r"engine-\d+\.\d+\.\d+", args.tag):
+            raise ValueError("Expected engine-X.Y.Z")
+        commit = gh("api", f"repos/{REPOSITORY}/commits/{args.tag}", "--jq", ".sha")
+        verify_provenance(args.worker, args.tag, commit)
 
 
 if __name__ == "__main__":

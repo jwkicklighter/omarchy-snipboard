@@ -9,7 +9,10 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use serde_json::{Value, json};
 use snipboard::storage::{read_library, read_usage, write_library};
 
-const WORKER: &str = env!("CARGO_BIN_EXE_snipboard-worker");
+fn worker_binary() -> std::ffi::OsString {
+    std::env::var_os("SNIPBOARD_TEST_WORKER")
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_snipboard-worker").into())
+}
 
 #[test]
 fn images_capture_preview_restart_and_delete_through_protocol() {
@@ -19,13 +22,13 @@ fn images_capture_preview_restart_and_delete_through_protocol() {
     image::DynamicImage::new_rgb8(4, 3).write_to(&mut bytes, image::ImageFormat::Png).unwrap();
     let bytes = bytes.into_inner();
     for state in ["sensitive", "nil", "clear"] {
-        let mut event = Command::new(WORKER).arg("--clipboard-image-event").arg(directory.path())
+        let mut event = Command::new(worker_binary()).arg("--clipboard-image-event").arg(directory.path())
             .env("CLIPBOARD_STATE", state).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
         let _ = event.stdin.take().unwrap().write_all(&bytes);
         assert!(event.wait_with_output().unwrap().stdout.is_empty());
         assert!(!directory.path().join("image.pending").exists());
     }
-    let mut event = Command::new(WORKER).arg("--clipboard-image-event").arg(directory.path())
+    let mut event = Command::new(worker_binary()).arg("--clipboard-image-event").arg(directory.path())
         .env("CLIPBOARD_STATE", "data").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
     event.stdin.take().unwrap().write_all(&bytes).unwrap();
     let frame: Value = serde_json::from_slice(&event.wait_with_output().unwrap().stdout).unwrap();
@@ -70,7 +73,7 @@ struct Worker {
 
 impl Worker {
     fn launch(directory: &Path) -> Self {
-        let mut command = Command::new(WORKER);
+        let mut command = Command::new(worker_binary());
         command.arg("--data").arg(directory);
         Self::spawn(&mut command)
     }
@@ -128,7 +131,7 @@ fn fields(snippet: &Value) -> Value {
 }
 
 fn default_command(home: &Path) -> Command {
-    let mut command = Command::new(WORKER);
+    let mut command = Command::new(worker_binary());
     command.env("HOME", home).env("XDG_STATE_HOME", home.join("state")).env("XDG_CONFIG_HOME", home.join("config"));
     command
 }
@@ -219,7 +222,7 @@ fn clipboard_callback_capture_search_literal_reuse_and_restart() {
     let text = "  🌍\r\n{date} {{clipboard}} {cursor}\n";
     let mut worker = Worker::launch(directory.path());
     assert_eq!(worker.request(json!({"op": "search", "kind": "clipboard"}))["rows"], json!([]));
-    let mut callback = Command::new(WORKER).arg("--clipboard-event")
+    let mut callback = Command::new(worker_binary()).arg("--clipboard-event")
         .env("CLIPBOARD_STATE", "data")
         .stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
     callback.stdin.take().unwrap().write_all(text.as_bytes()).unwrap();
@@ -335,7 +338,7 @@ fn clipboard_callback_ignores_sensitive_empty_binary_and_oversized_selections() 
         ("data", vec![0xff]), ("data", b"nul\0".to_vec()),
         ("data", vec![b'x'; 65537]),
     ] {
-        let mut callback = Command::new(WORKER).arg("--clipboard-event").env("CLIPBOARD_STATE", state)
+        let mut callback = Command::new(worker_binary()).arg("--clipboard-event").env("CLIPBOARD_STATE", state)
             .stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
         // Sensitive callbacks can exit without reading stdin.
         let _ = callback.stdin.take().unwrap().write_all(&bytes);
@@ -356,7 +359,7 @@ fn paste_protocol_renders_templates_and_sends_one_paste_gesture() {
     }
     let mut paths = vec![commands.path().to_owned()];
     paths.extend(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()));
-    let mut command = Command::new(WORKER);
+    let mut command = Command::new(worker_binary());
     command.arg("--data").arg(directory.path())
         .env("PATH", std::env::join_paths(paths).unwrap())
         .env("SNIPBOARD_TEST_OUTPUT", commands.path());
@@ -462,7 +465,7 @@ fn invalid_requests_echo_sequence_without_stopping() {
 fn eof_sigterm_oversized_line_and_exclusive_worker() {
     let directory = data();
     let mut worker = Worker::launch(directory.path());
-    let second = Command::new(WORKER).arg("--data").arg(directory.path()).stdin(Stdio::null()).output().unwrap();
+    let second = Command::new(worker_binary()).arg("--data").arg(directory.path()).stdin(Stdio::null()).output().unwrap();
     assert!(!second.status.success());
     let fatal: Value = serde_json::from_slice(&second.stdout).unwrap();
     assert_eq!(fatal["op"], "fatal");
@@ -486,7 +489,7 @@ fn eof_sigterm_oversized_line_and_exclusive_worker() {
 fn source_and_relative_data_paths_are_fatal() {
     let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("forbidden-data");
     for path in [source.as_path(), Path::new("relative-data")] {
-        let output = Command::new(WORKER).arg("--data").arg(path).stdin(Stdio::null()).output().unwrap();
+        let output = Command::new(worker_binary()).arg("--data").arg(path).stdin(Stdio::null()).output().unwrap();
         assert!(!output.status.success());
         assert_eq!(serde_json::from_slice::<Value>(&output.stdout).unwrap()["op"], "fatal");
     }

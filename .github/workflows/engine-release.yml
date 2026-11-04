@@ -13,9 +13,31 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  state:
+    if: startsWith(github.ref, 'refs/tags/engine-')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      published: ${{ steps.state.outputs.published }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Check tag and existing release without replacing published bytes
+        id: state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ENGINE_TAG: ${{ github.ref_name }}
+        run: python3 tools/release_pipeline.py engine-status --tag "$ENGINE_TAG"
   build:
+    needs: state
+    if: needs.state.outputs.published != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -29,38 +51,40 @@ jobs:
           SNIPBOARD_REQUIRE_TEST_RUNNERS: '1'
         run: |
           echo /usr/lib/qt6/bin >> "$GITHUB_PATH"
-          cargo test --release --locked
+          cargo test --release --locked -- --test-threads=1
           cargo build --release --locked --bin snipboard-worker
       - name: Package immutable candidate and metadata
         env:
           RELEASE_TAG: ${{ github.ref_name }}
-          TAG_PUSH: ${{ github.event_name == 'push' }}
         run: |
-          tag="$RELEASE_TAG"
-          if [[ "$TAG_PUSH" != true ]]; then
-            tag="engine-$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')"
-          fi
-          python3 tools/engine_release.py package --tag "$tag"
+          python3 tools/engine_release.py package --tag "$RELEASE_TAG"
           python3 tools/worker_smoke.py build/engine-dist/snipboard-worker-linux-x86_64
+      - name: Attest the exact source-built release executable
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: build/engine-dist/snipboard-worker-linux-x86_64
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: engine-linux-x86_64
           path: build/engine-dist/*
           if-no-files-found: error
 
-  draft:
+  publish:
     needs: build
-    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
+      attestations: read
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: engine-linux-x86_64
           path: dist
-      - name: Create draft only; publication and pinning require review
+      - name: Publish tested and attested engine without replacing a published release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -69,6 +93,25 @@ jobs:
           if gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft > draft-state; then
             test "$(cat draft-state)" = true
           else
-            gh release create "$RELEASE_TAG" --verify-tag --draft --latest=false --title "Engine ${RELEASE_TAG#engine-}" --notes "Independent Snipboard worker. Review candidate checksums and metadata before publishing; then adopt the pin in a separate UI PR."
+            gh release create "$RELEASE_TAG" --verify-tag --draft --latest=false --title "Engine ${RELEASE_TAG#engine-}" --notes "Independent Snipboard worker built and attested from the tagged source commit. Pin adoption is automated in a separate pin-only PR."
           fi
           gh release upload "$RELEASE_TAG" dist/* --clobber
+          chmod +x dist/snipboard-worker-linux-x86_64
+          python3 tools/worker_smoke.py dist/snipboard-worker-linux-x86_64
+          python3 tools/engine_release.py verify --worker dist/snipboard-worker-linux-x86_64 --tag "$RELEASE_TAG"
+          gh release edit "$RELEASE_TAG" --draft=false --latest=false
+
+  adopt:
+    needs: [state, publish]
+    if: always() && needs.state.result == 'success' && (needs.state.outputs.published == 'true' || needs.publish.result == 'success')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch pin-only PR from trusted default-branch automation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ENGINE_TAG: ${{ github.ref_name }}
+        run: gh workflow run adopt-engine.yml --ref master -f "tag=$ENGINE_TAG"

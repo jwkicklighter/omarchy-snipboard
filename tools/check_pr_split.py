@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Keep engine implementation and plugin delivery changes in separate PRs."""
-
-import subprocess
-import sys
-
+"""Classify engine paths for versioning and immutable-tag checks."""
 
 def groups(paths):
     engine = []
@@ -17,8 +13,5 @@ def groups(paths):
 
 
 if __name__ == "__main__":
-    # Include both sides of renames: moving a file cannot evade the boundary.
-    paths = subprocess.check_output(["git", "diff", "--name-only", "--no-renames", "-z", sys.argv[1], "HEAD"], text=True).split("\0")
-    engine, ui = groups(paths)
-    if engine and ui:
-        sys.exit("Split engine and UI changes: merge/release the engine first, then submit compatible UI and its published pin. See docs/releases.md.\nEngine: " + ", ".join(engine) + "\nUI: " + ", ".join(ui))
+    from release_policy import main
+    main()
