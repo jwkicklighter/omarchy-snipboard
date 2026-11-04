@@ -106,6 +106,21 @@ def prepare_pin(tag):
 
 
 def require_merge_policy(branch):
+    rules = api(f"rules/branches/{branch}")
+    status_rules = [rule for rule in rules if rule["type"] == "required_status_checks"]
+    if status_rules:
+        for rule in status_rules:
+            checks = rule["parameters"]
+            contexts = {item["context"] for item in checks.get("required_status_checks", [])}
+            if not checks.get("strict_required_status_checks_policy") or not REQUIRED_CHECKS <= contexts:
+                continue
+            if rule["ruleset_source_type"] != "Repository" or rule["ruleset_source"] != REPOSITORY:
+                continue
+            ruleset = api(f"rulesets/{rule['ruleset_id']}")
+            if ruleset["enforcement"] == "active" and ruleset.get("bypass_actors") == []:
+                return
+        raise ValueError("Require up-to-date branches and all release checks in an active repository ruleset with no bypass actors: " + ", ".join(sorted(REQUIRED_CHECKS)))
+    # Older repositories can still use classic branch protection instead.
     policy = api(f"branches/{branch}/protection")
     checks = policy.get("required_status_checks") or {}
     contexts = set(checks.get("contexts", [])) | {item["context"] for item in checks.get("checks", [])}

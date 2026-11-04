@@ -48,11 +48,14 @@ this window; this is not an atomic update mechanism for Git installations.
 ### One-time GitHub setup
 
 - Keep repository auto-merge and squash merging enabled.
-- Protect `master` with **Require branches to be up to date before merging**,
-  enforce protection for administrators, and require these exact checks:
+- In the active repository ruleset for `master`, enable **Require branches to be
+  up to date before merging**, keep the bypass list empty (including admins),
+  and require these exact checks:
   - `Release policy`
   - `Rust 1.89 / Linux x86_64`
   - `Rust stable / Linux x86_64`
+- Classic branch protection is also supported when no status-check ruleset is
+  active: require the same checks, up-to-date branches, and admin enforcement.
 - Do not require manual PR approvals for the bot-only pin and release PRs if
   fully unattended merging is desired. Required CI checks still apply.
 - Supply `RELEASE_PLEASE_TOKEN` with contents and pull-request write access and

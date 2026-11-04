@@ -143,10 +143,25 @@ class PipelineTests(unittest.TestCase):
     def test_auto_merge_requires_strict_checks_and_admin_enforcement(self):
         good = {"required_status_checks": {"strict": True, "contexts": sorted(pipeline.REQUIRED_CHECKS)}, "enforce_admins": {"enabled": True}}
         for value in [{}, dict(good, required_status_checks={"strict": False}), dict(good, enforce_admins={"enabled": False})]:
-            with patch.object(pipeline, "api", return_value=value), self.assertRaises(ValueError):
+            with patch.object(pipeline, "api", side_effect=[[], value]), self.assertRaises(ValueError):
                 pipeline.require_merge_policy("master")
-        with patch.object(pipeline, "api", return_value=good):
+        with patch.object(pipeline, "api", side_effect=[[], good]):
             pipeline.require_merge_policy("master")
+
+    def test_auto_merge_accepts_strict_repository_rulesets_without_bypass(self):
+        rule = {"type": "required_status_checks", "ruleset_source_type": "Repository",
+                "ruleset_source": pipeline.REPOSITORY, "ruleset_id": 123,
+                "parameters": {"strict_required_status_checks_policy": True,
+                               "required_status_checks": [{"context": name} for name in pipeline.REQUIRED_CHECKS]}}
+        with patch.object(pipeline, "api", side_effect=[[rule], {"enforcement": "active", "bypass_actors": []}]) as api:
+            pipeline.require_merge_policy("master")
+        self.assertEqual(api.call_args.args, ("rulesets/123",))
+        for detail in [{"enforcement": "disabled", "bypass_actors": []}, {"enforcement": "active", "bypass_actors": [{"actor_id": 1}]}]:
+            with patch.object(pipeline, "api", side_effect=[[rule], detail]), self.assertRaisesRegex(ValueError, "ruleset"):
+                pipeline.require_merge_policy("master")
+        for parameters in [{"strict_required_status_checks_policy": False}, {"strict_required_status_checks_policy": True, "required_status_checks": []}]:
+            with patch.object(pipeline, "api", return_value=[dict(rule, parameters=parameters)]), self.assertRaisesRegex(ValueError, "up-to-date"):
+                pipeline.require_merge_policy("master")
 
     def test_auto_merge_validates_pr_scope_and_locks_tested_head(self):
         pr = {"headRefName": "automation/engine-1.0.1", "headRefOid": "a" * 40,
